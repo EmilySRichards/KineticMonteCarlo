@@ -199,7 +199,9 @@ end
 
 # ### Overall simulation routine
 
-function MKuboSimulation(vertices, edges, num_histories, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽)
+function MKuboSimulation(L, PBC, Basis, num_histories, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽)
+    
+    vertices, edges = LatticeGrid(L, PBC, Basis)
     
     ks = range(1,length(T)*length(𝒽)*num_histories)
     args = [[deepcopy(vertices), deepcopy(edges), runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T[div(div(k-1,num_histories),length(𝒽))+1], 𝒽[rem(div(k-1,num_histories),length(𝒽))+1]] for k=ks]

@@ -203,10 +203,10 @@ end
 
 # ### Overall simulation routine
 
-function BathSimulation(L, PBC, W, Tc, Th, num_histories, therm_runtime, runtime, t_therm, t_autocorr, N_blocks, 𝒽)
+function BathSimulation(L, PBC, Basis W, Tc, Th, num_histories, therm_runtime, runtime, t_therm, t_autocorr, N_blocks, 𝒽)
     
     # set up graph and demarcate baths and strips
-    vertices, edges = CubicGrid(L, PBC);
+    vertices, edges = LatticeGrid(L, PBC, Basis);
     Lx = L[1] # length of sample
     Area = prod(L[2:end]) # cross-sectional area of sample
     

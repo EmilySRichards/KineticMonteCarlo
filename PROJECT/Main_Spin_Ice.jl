@@ -14,42 +14,18 @@
 #     name: julia-(6-threads)-1.8
 # ---
 
-# # First Attempt with Julia
-
-# In what follows we work in natural units: $a=\delta t = k_B = \lambda = 1$.
+# ## Setup
 
 # +
 dir = dirname(pwd()) * "/PROJECT"
-
-using Pkg
-Pkg.activate(dir)
-
-using Distributed
-
-# +
-global const multiProcess = (nworkers()>1) ? true : false # only use multiprocessing if run with -p, otherwise use -t threads by default
-
-if multiProcess
-    print(nworkers())
-    
-    @everywhere using Pkg
-    @everywhere Pkg.activate(dir)
-    @everywhere using Distributed, StatsBase, Statistics, Distributions, Roots, PyPlot, LsqFit, Dates # , ProfileVega # , Bootstrap #, ProgressMeter, ProfileVega, JLD
-else
-    print(Threads.nthreads())
-    
-    using StatsBase, Statistics, Distributions, Roots, PyPlot, LsqFit, Dates # , ProfileVega # , Bootstrap #, ProgressMeter, ProfileVega, JLD
-end
-
-using Colors, PlotUtils, Graphs
-# -
+include(dir * "/functions/Preamble.jl")
+@everywhere dir = dirname(pwd()) * "/PROJECT"
 
 t0 = now()
+# -
 
-# ## Setup
-
-@everywhere global const sixVertex::Bool = false
-@everywhere global const twoFlip::Bool = true
+@everywhere global const sixVertex::Bool = true
+@everywhere global const twoFlip::Bool = false
 @everywhere global const δE::Int = sixVertex ? 8 : 4
 
 # Lx  Ly  nT    t     t_th
@@ -69,16 +45,17 @@ t0 = now()
 # ## Thermal Bath Method
 #
 
-@everywhere include(dir * "/functions/DemonHeatBath.jl")
+@everywhere include(dir * "/functions/simulationFunctions/DemonHeatBath.jl")
 
 # +
-L = [15, 15]
-PBC = [false, true]
+L = [15, 15, 15]
+PBC = [false, true, true]
+Basis = CubicBasis(length(L))
 
-num_histories = 1
-therm_runtime = 1000
-runtime = 5000
-t_therm = 1000
+num_histories = 25
+therm_runtime = 5000
+runtime = 10000
+t_therm = 5000
 t_autocorr = 100
 N_blocks = 2*floor(Int64, runtime/t_autocorr)
 
@@ -88,7 +65,7 @@ Th = 10.0 * (sixVertex ? 1.0 : 0.5)
 
 𝒽 = [0]
 
-T, κ, C, TStd, κStd, CStd = BathSimulation(L, PBC, W, Tc, Th, num_histories, therm_runtime, runtime, t_therm, t_autocorr, N_blocks, 𝒽);
+T, κ, C, TStd, κStd, CStd = BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, runtime, t_therm, t_autocorr, N_blocks, 𝒽);
 
 idx = W+1:size(T, 2)-W+1;
 # -
@@ -134,14 +111,15 @@ print("\n", canonicalize(t1 - t0))
 #
 # ### Demon Dynamics
 
-@everywhere include(dir * "/functions/DemonKubo.jl")
+@everywhere include(dir * "/functions/simulationFunctions/DemonKubo.jl")
 
 # +
 #global testing = []
 
 # PARAMETERS
-L = [15, 15]
-PBC = [true, true]
+L = [15, 15, 15]
+PBC = [true, true, true]
+Basis = CubicBasis(length(L))
 
 𝒽 = [0]
 
@@ -152,7 +130,7 @@ Tmax = 10.0 * (sixVertex ? 1.0 : 0.5)
 NumT = 50
 T = collect(range(Tmin, Tmax, length=NumT)) # the +0.1 is a fudge factor to fix our approximations earlier... (exact value doesn't matter b/c just adds ~a single demon)
 
-num_histories = 1
+num_histories = 25
 runtime = 10000
 t_cutoff = 100
 t_therm = 5000
@@ -160,8 +138,7 @@ t_autocorr = 100
 N_blocks = 2*floor(Int64, runtime/t_autocorr)
 
 # EVALUATION
-vertices, edges = CubicGrid(L, PBC);
-Tobs, κ, C, Diff, TobsStd, κStd, CStd, DiffStd = DKuboSimulation(vertices, edges, num_histories, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽);
+Tobs, κ, C, Diff, TobsStd, κStd, CStd, DiffStd = DKuboSimulation(L, PBC, Basis, edges, num_histories, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽);
 
 # +
 #for t in testing
@@ -213,12 +190,13 @@ print(canonicalize(t2 - t1))
 
 # ### Microcanonical Dynamics
 
-@everywhere include(dir * "/functions/MicroKubo.jl")
+@everywhere include(dir * "/functions/simulationFunctions/MicroKubo.jl")
 
 # +
 # PARAMETERS
 L = [15, 15]
 PBC = [true, true]
+Basis = CubicBasis(length(L))
 
 Tmin = 0.01
 Tmax = 10.0
@@ -239,8 +217,7 @@ t_cutoff = 100
 
 
 # EVALUATION
-vertices, edges = CubicGrid(L, PBC);
-κ, C, Diff, M, ℙ, κStd, CStd, DiffStd, MStd, ℙStd = MKuboSimulation(vertices, edges, num_histories, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽);
+κ, C, Diff, M, ℙ, κStd, CStd, DiffStd, MStd, ℙStd = MKuboSimulation(L, PBC, Basis, num_histories, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽);
 
 # +
 #for t in testing
@@ -336,11 +313,13 @@ print("\n", canonicalize(t3 - t2))
 
 # ### Diffusive Motion
 
-@everywhere include(dir * "/functions/MicroDiffusion.jl")
+@everywhere include(dir * "/functions/simulationFunctions/MicroDiffusion.jl")
 
 # +
 L = [10, 10]
 PBC = [true, true]
+Basis = CubicBasis(length(L))
+
 therm_runtime = 1000
 runtime = 1000
 tau = 2:floor(Int64, 0.75*runtime)
@@ -351,7 +330,7 @@ T = range(0.01, 10.0, length=20);
 ℓ = []; # floor.(Int64, range(1, prod(L)/4, length=20));
 
 
-x, δ, Mag, Perc, p = DiffSim(L, PBC, therm_runtime, runtime, ℓ, T, 𝒽)
+x, δ, Mag, Perc, p = DiffSim(L, PBC, Basis therm_runtime, runtime, ℓ, T, 𝒽)
 D, α, C, γ, MSD, DirrCorr = DiffAnalysis(x, δ, p, runtime, ℓ, T, 𝒽)
 # -
 

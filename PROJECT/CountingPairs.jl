@@ -14,31 +14,9 @@
 #     name: julia-_6-threads_-1.8
 # ---
 
-# +
 dir = dirname(pwd()) * "/PROJECT"
-
-using Pkg
-Pkg.activate(dir)
-
-using Distributed
-
-# +
-global const multiProcess = (nworkers()>1) ? true : false # only use multiprocessing if run with -p, otherwise use -t threads by default
-
-if multiProcess
-    print(nworkers())
-    
-    @everywhere using Pkg
-    @everywhere Pkg.activate(dir)
-    @everywhere using Distributed, StatsBase, Statistics, Distributions, Roots, PyPlot, LsqFit, Dates # , ProfileVega # , Bootstrap #, ProgressMeter, ProfileVega, JLD
-else
-    print(Threads.nthreads())
-    
-    using StatsBase, Statistics, Distributions, Roots, PyPlot, LsqFit, Dates # , ProfileVega # , Bootstrap #, ProgressMeter, ProfileVega, JLD
-end
-
-using Colors, PlotUtils, Graphs
-# -
+include(dir * "/functions/Preamble.jl")
+@everywhere dir = dirname(pwd()) * "/PROJECT"
 
 @everywhere global const sixVertex::Bool = false
 @everywhere global const twoFlip::Bool = true
@@ -58,18 +36,18 @@ therm_runtime = 1000
 runtime = 1000
 num_histories = 10
 tau = 2:floor(Int64, 0.75*runtime)
-𝒽 = range(0.0, 2.0, length=7)
+𝒽 = range(0.0, 2.0, length=15)
 
-T = range(0.01, 10.0, length=20);
+T = range(0.01, 10.0, length=50);
 
 # +
-pairCount = zeros(Int64, length(T), length(𝒽), num_histories)
+pairCount = zeros(length(𝒽), length(T), num_histories)
 
 for i in 1:num_histories
     for j in eachindex(T)
         for k in eachindex(𝒽)
             vertices, edges = CubicGrid(L, PBC);
-            MicroKuboSetup(vertices, edges, therm_runtime, T[j], 𝒽, false)
+            MicroKuboSetup(vertices, edges, therm_runtime, T[j], 𝒽[k], false)
 
             # Find all particles
             prtclIndices = []
@@ -79,14 +57,17 @@ for i in 1:num_histories
                     push!(prtclIndices, i)
                 end
             end
+            
+            if length(prtclIndices) == 0
+                pairCount[k,j,i] = NaN
+                continue
+            end
 
             # Find pairs
-
-            pairCount = 0
-            for i in prtclIndices
-                for j in prtclIndices
-                    if i != j
-                        Δ = vertices[i].x - vertices[j].x
+            for p in prtclIndices
+                for q in prtclIndices
+                    if p != q
+                        Δ = vertices[p].x - vertices[q].x
                         D = 0  
                         # correct for PBCs
                         for d in 1:length(Δ)
@@ -101,8 +82,7 @@ for i in 1:num_histories
                 end
             end
 
-            #pairCount[k,j,i] /= 2 # correct for 2x-counting
-            pairCount[k,j,i] /= length(prtclIndices) # *fraction* of particles that are in pairs
+            pairCount[k,j,i] /= 2*length(prtclIndices) # *fraction* of particles that are in pairs
         end
     end
 end
@@ -113,6 +93,7 @@ pairCount = mean(pairCount, dims=3)
 for k in eachindex(𝒽)
     plot(T, pairCount[k, :])
 end
+savefig("figs/FractionOfParticlesInPairs.png")
 # -
 
 # Obviously the above will fail when there are multiple **overlapping** pairs, but at low temperatures it should give us a decent estimate.

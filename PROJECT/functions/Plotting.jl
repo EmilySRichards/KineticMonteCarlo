@@ -32,14 +32,16 @@ end
 
 # ### Graphs.jl plotting
 
-edgewidth_dict = ones(length(verticesH), length(verticesH))
-for n in eachindex(b)
-    i = b[n]
-    j = (n<length(b)) ? b[n+1] : b[1]
-    
-    edgewidth_dict[i, j] = 5
-    edgewidth_dict[j, i] = 5
-end
+# + active=""
+# edgewidth_dict = ones(length(verticesH), length(verticesH))
+# for n in eachindex(b)
+#     i = b[n]
+#     j = (n<length(b)) ? b[n+1] : b[1]
+#     
+#     edgewidth_dict[i, j] = 5
+#     edgewidth_dict[j, i] = 5
+# end
+# -
 
 # ### Plotting with errors
 

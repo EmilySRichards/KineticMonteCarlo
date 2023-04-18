@@ -268,9 +268,9 @@ end
 
 # ### Single diffusion routine
 
-@everywhere function DiffSimSingle(L, PBC, therm_runtime, runtime, useT, ℓorT, 𝒽)
+@everywhere function DiffSimSingle(L, PBC, Basis, therm_runtime, runtime, useT, ℓorT, 𝒽)
     # set up lattice
-    vertices, edges = CubicGrid(L, PBC);
+    vertices, edges = CubicGrid(L, PBC, Basis);
 
     # thermalise to correct temperature OR correct number of particles
     if useT
@@ -323,9 +323,9 @@ end
     ns = 1:num_histories*length(𝒽)*M
     
     if useT
-        args = [[L, PBC, therm_runtime, runtime, useT, T[rem(n-1,M)+1], 𝒽[rem(div(n-1,M),length(𝒽))+1]] for n in ns]
+        args = [[L, PBC, Basis, therm_runtime, runtime, useT, T[rem(n-1,M)+1], 𝒽[rem(div(n-1,M),length(𝒽))+1]] for n in ns]
     else
-        args = [[L, PBC, therm_runtime, runtime, useT, ℓ[rem(n-1,M)+1], 𝒽[rem(div(n-1,M),length(𝒽))+1]] for n in ns]
+        args = [[L, PBC, Basis therm_runtime, runtime, useT, ℓ[rem(n-1,M)+1], 𝒽[rem(div(n-1,M),length(𝒽))+1]] for n in ns]
     end
 
     @everywhere function mpfun1(args)

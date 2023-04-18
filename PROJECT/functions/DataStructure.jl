@@ -175,8 +175,34 @@ end
     return (Vs, Es, Bev)
 end
 
-# particularly useful function
-@everywhere CubicGrid = (L, PBC) -> LatticeGrid(L, PBC, CubicBasis(length(L)))
+@everywhere function DiamondBasis()
+    Nv = 8
+    Ne = 16
+    
+    Vs = [Cell(false, 0, [], [], []) for j in 1:Nv]
+    Es = [Cell(false, 0, [], [], []) for α in 1:Ne]
+    
+    Vs[1].x = [0,   0,   0  ]
+    Vs[2].x = [1/4, 1/4, 1/4]
+    Vs[3].x = [1/2, 1/2, 0  ]
+    Vs[4].x = [1/2, 0  , 1/2]
+    Vs[5].x = [0,   1/2, 1/2]
+    Vs[6].x = [3/4, 3/4, 1/4]
+    Vs[7].x = [3/4, 1/4, 3/4]
+    Vs[8].x = [1/4, 3/4, 3/4]
+    
+    tmp = [(1, 1), (1, 2), (2, 2), (2, 3), (3, 2), (3, 4), (4, 2), (4, 5), (5, 3), (5, 6), (6, 4), (6, 7), (7, 5), (7, 8)] # list of INTERNAL links (edge then vertex)
+    append!(tmp, [(8, 6), (9, 6), (10, 6), (11, 7), (12, 7), (13, 7), (14, 8), (15, 8), (16, 8)]) # list of EXTERNAL links
+    
+    for t in tmp
+        push!(Es[t[1]].∂, t[2])
+        push!(Vs[t[2]].δ, t[1])
+    end
+    
+    Bev = [[(8, 1), [1 1 0]], [(9, 5), [1 0 0]], [(10, 4), [0 1 0]], [(11, 5), [1 0 0]], [(12, 1), [1 0 1]], [(13, 3), [0 0 1]], [(14, 4), [0 1 0]], [(15, 3), [0 0 1]], [(16, 1), [0 1 1]]] # dangling edge -> matching vertex
+    
+    return (Vs, Es, Bev)
+end
 
 # ### Useful Functions
 
@@ -210,7 +236,7 @@ end
 # ### Interface with Graphs.jl package
 
 # + active=""
-# using MetaGraphs, Plots, GraphRecipes
+# using Graphs, MetaGraphs, Plots, GraphRecipes
 
 # + active=""
 # function LatticeToGraph(vertices, edges)
