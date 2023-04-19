@@ -17,6 +17,8 @@ using Pkg
 Pkg.activate(dir)
 using Distributed
 
+@everywhere dir = dirname(pwd()) * "/PROJECT"
+
 # +
 global const multiProcess = (nworkers()>1) ? true : false # only use multiprocessing if run with -p, otherwise use -t threads by default
 

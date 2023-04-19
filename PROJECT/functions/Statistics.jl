@@ -36,11 +36,14 @@
 end
 
 # https://www.physik.uni-leipzig.de/~spitzner/publications/Spitzner_bootstrap.pdf
-@everywhere function MyBootstrap(x, fun, W, Nbps = M) 
+@everywhere function MyBootstrap(x, fun, W, Nbps = -1) 
     P = size(x, 1) # number of arguments to fun
     
     N = length(x[1])
     M = ceil(Int64, N/W) # number of blocks (ceil accounts for shorter blocks if W doesn't factor N)
+    if Nbps <= 0
+        Nbps = M
+    end
     
     blocks = [[x[p][1+(m-1)*W : min(m*W,N)] for m=1:M] for p=1:P] # M x P x W nested vectors
     rands = [rand(1:M, M) for n=1:Nbps] # have to precompute these so they're the same for all variables p
@@ -48,17 +51,20 @@ end
     
     fmavg = [fun(samples[n]...) for n in 1:Nbps] # construct Nbps randomly-chosen length-M resamplings and average each one
     
-    favg = mean(fmavg) # biased estimator (bias hard to estimate and usually small => typically ignored)
-    ferr = sqrt(sum((fmavg .- favg).^2)/(Nbps-1)) # error in estimator
+    𝐟𝐦𝐚𝐯𝐠 = filter(!isnan, fmavg) # **filters out bad samples where the estimator is undefined**
+    𝐍𝐛𝐩𝐬 = length(fmavg) # adjust Nbps to account for that
+    
+    𝐟𝐚𝐯𝐠 = mean(𝐟𝐦𝐚𝐯𝐠) # biased estimator (bias hard to estimate and usually small => typically ignored)
+    𝐟𝐞𝐫𝐫 = sqrt(sum((𝐟𝐦𝐚𝐯𝐠 .- 𝐟𝐚𝐯𝐠).^2)/(𝐍𝐛𝐩𝐬-1)) # error in estimator
 
-    return favg, ferr
+    return 𝐟𝐚𝐯𝐠, 𝐟𝐞𝐫𝐫
 end
 
 # ### Override Bootstrap because it's currently broken!!!
 
-@everywhere function MyBootstrap(x, fun, W, Nbps = -1)
-    return fun(x...), 0 # MyJackknife(x, fun, W) # 
-end
+#@everywhere function MyBootstrap(x, fun, W, Nbps = -1)
+#    return fun(x...), 0 # MyJackknife(x, fun, W) # 
+#end
 # BOOTSTRAP DISABLED - CURRENTLY FAILS FOR LOW TEMPERATURES??? PERHAPS B/C AUTOCORRELATION EFFECTS LARGE??
 
 # ### Autocorrelation function

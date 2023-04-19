@@ -24,8 +24,8 @@ include(dir * "/functions/Preamble.jl")
 t0 = now()
 # -
 
-@everywhere global const sixVertex::Bool = false
-@everywhere global const twoFlip::Bool = true
+@everywhere global const sixVertex::Bool = true
+@everywhere global const twoFlip::Bool = false
 @everywhere global const δE::Int = sixVertex ? 8 : 4
 
 # Lx  Ly  nT    t     t_th
@@ -42,144 +42,15 @@ t0 = now()
 
 # ## Thermal Conductivity
 
-# ## Thermal Bath Method
-#
-
-@everywhere include(dir * "/functions/simulationFunctions/DemonHeatBath.jl")
-
-# +
-L = [15, 15]
-PBC = [false, true]
-Basis = CubicBasis(length(L))
-
-num_histories = 1
-therm_runtime = 100
-runtime = 500
-t_therm = 100
-t_autocorr = 100
-N_blocks = 2*floor(Int64, runtime/t_autocorr)
-
-W = 5
-Tc = 0.1 * (sixVertex ? 1.0 : 0.5)
-Th = 10.0 * (sixVertex ? 1.0 : 0.5)
-
-T, κ, C, TStd, κStd, CStd = BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, runtime, t_therm, t_autocorr, N_blocks);
-
-idx = W+1:size(T, 2)-W+1;
-# -
-
-# FUDGE FACTOR - WHYYY MISSING FACTOR 1/2????
-κ[1,:,:] ./= 2;
-κ[2,:,:] ./= 2;
-
-colors = jetmap(2)
-
-figure()
-for n in 1:2
-    plotWithError(T[n,:], collect(1:size(T, 2)), colors[n], TStd[n,:])
-end
-savefig("figs/Demon_Bath_Temperatures.png")
-
-figure()
-for n in 1:2
-    plotWithError(κ[n,:], T[n,:], colors[n], κStd[n,:], TStd[n,:])
-end
-savefig("figs/Demon_Bath_Conductivity.png")
-
-figure()
-for n in 1:2
-    plotWithError(C[n,:], T[n,:], colors[n], CStd[n,:], TStd[n,:])
-end
-savefig("figs/Demon_Bath_Capacity.png")
-
-T = Nothing
-κ = Nothing
-
-t1 = now()
-print("\n", canonicalize(t1 - t0))
-
-# ## Green-Kubo Method
-#
-# ### Demon Dynamics
-
-@everywhere include(dir * "/functions/simulationFunctions/DemonKubo.jl")
-
-# +
-#global testing = []
-
-# PARAMETERS
-L = [15, 15]
-PBC = [true, true]
-Basis = CubicBasis(length(L))
-
-# find minimal representable temperature (just done for 𝒽=0 for now - MAYBE MODIFY TO PICK MAX OVER DIFF FIELDS??
-Nmin = (T,h) -> (sixVertex ? 2/(4*exp(-4/T)/3+h*exp(-2*h/T)) : 2/(exp(-2/T)+2*h*exp(-2*h/T))) # minimal lattice size on which T=Tmin is possible - see https://www.desmos.com/calculator/ll1ljvjmcg for details
-Tmin = find_zero((T) -> prod(L)-Nmin(T,0), 0.3)
-Tmax = 10.0 * (sixVertex ? 1.0 : 0.5)
-NumT = 50
-T = collect(range(Tmin, Tmax, length=NumT)) # the +0.1 is a fudge factor to fix our approximations earlier... (exact value doesn't matter b/c just adds ~a single demon)
-
-num_histories = 1
-runtime = 10000
-t_cutoff = 100
-t_therm = 5000
-t_autocorr = 100
-N_blocks = 2*floor(Int64, runtime/t_autocorr)
-
-# EVALUATION
-Tobs, κ, C, Diff, TobsStd, κStd, CStd, DiffStd = DKuboSimulation(L, PBC, Basis, num_histories, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T);
-# -
-
-now()
-
-colors = jetmap(1)
-
-# + tags=[]
-figure()
-#plot(T, T, color=:black)
-for n in 1:size(Tobs, 2)
-    plotWithError(Tobs, T, colors[1], TobsStd)
-end
-# Just to check that out temperature estimates aren't too far off
-# -
-
-figure()
-#plot(T, ((1 .- tanh.(1 ./T)) ./ T.^2) .* 0.5.*(1 .+ tanh.(1 ./T)), color=:black)
-for n in 1:size(Tobs, 2)
-    plotWithError(κ, Tobs, colors[1], κStd, TobsStd)
-end
-savefig("figs/Demon_Kubo_Conductivity.png")
-
-# +
-figure()
-#plot(T, 0.5 ./ T.^2 ./ cosh.(1 ./T).^2, color=:black)
-plotWithError(C, Tobs, colors[1], CStd, TobsStd)
-
-savefig("figs/Demon_Kubo_Capacity.png")
-# -
-
-figure()
-#plot(T, ones(size(T)), color=:black)
-plotWithError(Diff, Tobs, colors[1], DiffStd, TobsStd)
-savefig("figs/Demon_Kubo_Diff.png")
-
-κ = Nothing
-C_σ = Nothing
-κStd = Nothing 
-C_σStd = Nothing
-
-t2 = now()
-print(canonicalize(t2 - t1))
-
 # ### Microcanonical Dynamics
 
 @everywhere include(dir * "/functions/simulationFunctions/MicroKubo.jl")
 
 # +
 # PARAMETERS
-L = [15, 15]
-PBC = [true, true]
-Basis = CubicBasis(length(L))
+L = [10, 10, 10]
+PBC = [true, true, true]
+Basis = DiamondBasis()
 
 Tmin = 0.01
 Tmax = 10.0
@@ -190,7 +61,7 @@ T = range(Tmin, Tmax, length=NumT)
 
 𝒽 = [0] #range(0, 1, length=7)
 
-num_histories = 1
+num_histories = 5
 therm_runtime = 10000
 runtime = 10000
 t_therm = 5000
@@ -299,14 +170,14 @@ print("\n", canonicalize(t3 - t2))
 @everywhere include(dir * "/functions/simulationFunctions/MicroDiffusion.jl")
 
 # +
-L = [15, 15]
-PBC = [true, true]
-Basis = CubicBasis(length(L))
+L = [10, 10, 10]
+PBC = [true, true, true]
+Basis = DiamondBasis()
 
 therm_runtime = 1000
 runtime = 1000
 tau = 2:floor(Int64, 0.75*runtime)
-num_histories = 1
+num_histories = 5
 𝒽 = [0.0] #range(0.0, 2.0, length=7)
 
 T = range(0.01, 10.0, length=20);

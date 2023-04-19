@@ -122,7 +122,7 @@ end
     # find all the excitations
     js = []
     for j in eachindex(vertices)
-        if (sixVertex ? Atilde(edges, vertices[j])==4 : A(edges, vertices[j])<0) # in 6-vertex case, A_e = 2^2 = 4, A_2e = 4^2 = 16
+        if (sixVertex ? Atilde(edges, vertices[j])==4 : A(edges, vertices[j])<0) # in 2D spin ice case, A_e = 2^2 = 4, A_2e = 4^2 = 16
             push!(js, j)
         end
     end
@@ -268,9 +268,7 @@ end
 
 # ### Single diffusion routine
 
-@everywhere function DiffSimSingle(L, PBC, Basis, therm_runtime, runtime, useT, ℓorT, 𝒽)
-    # set up lattice
-    vertices, edges = CubicGrid(L, PBC, Basis);
+@everywhere function DiffSimSingle(vertices, edges, therm_runtime, runtime, useT, ℓorT, 𝒽)
 
     # thermalise to correct temperature OR correct number of particles
     if useT
@@ -312,7 +310,10 @@ end
 
 # ### Overall diffusion routine
 
-@everywhere function DiffSim(L, PBC, therm_runtime, runtime, ℓ, T, 𝒽)
+@everywhere function DiffSim(L, PBC, Basis, therm_runtime, runtime, ℓ, T, 𝒽)
+    
+    # set up lattice
+    vertices, edges = LatticeGrid(L, PBC, Basis);
     
     useT = length(T)>0
     if !useT
@@ -323,9 +324,9 @@ end
     ns = 1:num_histories*length(𝒽)*M
     
     if useT
-        args = [[L, PBC, Basis, therm_runtime, runtime, useT, T[rem(n-1,M)+1], 𝒽[rem(div(n-1,M),length(𝒽))+1]] for n in ns]
+        args = [[deepcopy(vertices), deepcopy(edges), therm_runtime, runtime, useT, T[rem(n-1,M)+1], 𝒽[rem(div(n-1,M),length(𝒽))+1]] for n in ns]
     else
-        args = [[L, PBC, Basis therm_runtime, runtime, useT, ℓ[rem(n-1,M)+1], 𝒽[rem(div(n-1,M),length(𝒽))+1]] for n in ns]
+        args = [[deepcopy(vertices), deepcopy(edges), therm_runtime, runtime, useT, ℓ[rem(n-1,M)+1], 𝒽[rem(div(n-1,M),length(𝒽))+1]] for n in ns]
     end
 
     @everywhere function mpfun1(args)
@@ -359,7 +360,7 @@ end
         p[t,i,h]   = size(x[t][i][h], 2)
     end
     
-    return x, δ, Mag, Perc, p
+    return x, δ, Mag, Perc, p, length(vertices)
 end
 
 # ### Single analysis routine

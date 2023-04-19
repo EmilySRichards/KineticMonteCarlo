@@ -133,7 +133,7 @@ end
 @everywhere function MKuboSingle(vertices, edges, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽)
     
     Cfun = (E) -> var(E) / T^2 / length(edges)
-    κfun = (S) -> mean(S) / T^2 / length(edges)
+    κfun = (S) -> sum(S) / T^2 / length(edges)
     Dfun = (E,S) -> κfun(S) / Cfun(E)
     
     tmax = runtime-t_therm
@@ -173,29 +173,41 @@ end
     E = E[t_therm+1:end]
     
     # -- 1. Heat Capacity --
-    C_μ, C_σ = MyBootstrap([E], Cfun, t_autocorr, N_blocks)
+    C_μ, C_s = MyBootstrap([E], Cfun, t_autocorr, N_blocks)
     
     # -- 2. Thermal Conductivity and Diffusivity--s
-    κ_μ = 0
-    κ_v = 0
-    D_μ = 0
-    D_v = 0
-    for τ in 0:t_cutoff
-        statistic = (τ==0 ? 0.5 : 1.0) .* J[1,:] .* circshift(J[1,:], -τ)
-        
-        tmp1, tmp2 = MyBootstrap([statistic[1:end-τ]], κfun, t_autocorr, N_blocks)
-        κ_μ += tmp1
-        κ_v += tmp2^2
-        
-        tmp1, tmp2 = MyBootstrap([E[1:end-τ], statistic[1:end-τ]], Dfun, t_autocorr, N_blocks)
-        D_μ += tmp1
-        D_v += tmp2^2
+    statistic = zeros(Float64, tmax)
+    for t in 1:tmax
+        for τ in 0:min(tmax-t, t_cutoff)
+            statistic[t] += (τ==0 ? 0.5 : 1.0) * J[1,t] * J[1,t+τ] / (tmax-τ)
+        end
     end
+    κ_μ, κ_s = MyBootstrap([statistic], κfun, t_autocorr, N_blocks)
+    D_μ, D_s = MyBootstrap([E, statistic], Dfun, t_autocorr, N_blocks)
     
     #push!(testing, [T, 𝒽, IntAutocorrTime([E, J[1,:], J[2,:]])])
     
-    return [κ_μ C_μ D_μ abs.(M) ℙ; κ_v C_σ^2 D_v 0 0]
+    return [κ_μ C_μ D_μ abs.(M) ℙ; κ_s^2 C_s^2 D_s^2 0 0]
 end
+
+# +
+#κ_μ = 0
+#κ_s = 0
+#D_μ = 0
+#D_s = 0
+#for τ in 0:t_cutoff
+#    statistic = (τ==0 ? 0.5 : 1.0) .* J[1,:] .* circshift(J[1,:], -τ)
+#    statistic /= length(statistic)
+#    
+#    tmp1, tmp2 = MyBootstrap([statistic[1:end-τ]], κfun, t_autocorr, N_blocks)
+#    κ_μ += tmp1
+#    κ_s += tmp2
+#    
+#    tmp1, tmp2 = MyBootstrap([E[1:end-τ], statistic[1:end-τ]], Dfun, t_autocorr, N_blocks)
+#    D_μ += tmp1
+#    D_s += tmp2
+#end
+# -
 
 # ### Overall simulation routine
 

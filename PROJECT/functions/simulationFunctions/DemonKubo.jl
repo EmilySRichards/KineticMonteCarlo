@@ -16,7 +16,7 @@
 
 # ### Set up the geometry
 
-@everywhere function DemonKuboSetup(vertices, edges, T, 𝒽)
+@everywhere function DemonKuboSetup(vertices, edges, T)
     
     # REinitialise entire system in ground state
     for edge in edges
@@ -31,20 +31,20 @@
     # calculate total demon energy for given temperature T
     D_tot = sixVertex ? 0 : length(vertices)
     for edge in edges
-        D_tot += δE/(exp(δE/T)-1) + 2*𝒽/(exp(2*𝒽/T)+1)
+        D_tot += δE/(exp(δE/T)-1)
     end
     
     if sixVertex
-        Aavg = 16*(cosh(2*𝒽/T)*exp(-4/T)+cosh(4*𝒽/T)*exp(-16/T))/(3+4*cosh(2*𝒽/T)*exp(-4/T)+cosh(4*𝒽/T)*exp(-16/T))
+        Aavg = 16*(exp(-4/T)+exp(-16/T))/(3+4*exp(-4/T)+exp(-16/T))
     else
-        Aavg = (3*(exp(1/T)-cosh(2*𝒽/T)*exp(-1/T)) + (cosh(4*𝒽/T)*exp(1/T)-cosh(𝒽/T)*exp(-1/T)))/(3*(exp(1/T)+cosh(2*𝒽/T)*exp(-1/T)) + (cosh(4*𝒽/T)*exp(1/T)+cosh(𝒽/T)*exp(-1/T))) 
+        Aavg = tanh(1/T)
     end
     D_tot += length(vertices) * (sixVertex ? Aavg : -Aavg)
     
     # randomly increment demon energies
     while D_tot>0 # while loop
         edge = edges[rand(eachindex(edges))] # pick a random edge
-        ΔD = δE # fine to just allocate maximum and not worry about 2𝒽 term b/c should thermalise anyway
+        ΔD = δE
         edge.D += ΔD # increment its demon energy by δE
         D_tot -= ΔD # decrement the total energy left to distribute
     end
@@ -52,7 +52,7 @@ end
 
 # ### Demon dynamics routine 
 
-@everywhere function DemonKubo(vertices, edges, runtime, 𝒽)
+@everywhere function DemonKubo(vertices, edges, runtime)
     
     J = zeros(Float64, (length(vertices[1].x), runtime))
     D = zeros(Float64, (runtime))
@@ -62,7 +62,7 @@ end
         E[t+1] = E[t]
         for _ in edges
             β = rand(eachindex(edges))
-            ΔE = ΔE_flip(vertices, edges, β, 𝒽)
+            ΔE = ΔE_flip(vertices, edges, β, 0)
             
             if edges[β].D >= ΔE
                 Δj_β = Δj_flip(vertices, edges, β)
@@ -92,35 +92,22 @@ end
     return J, D, E[2:end]
 end
 
-# +
-# Old conductivity calculation (DOESN'T ASSUME EACH CORRELATION TERM INDEP BUT BREAKS BOOTSTRAP???)
-#κfun = (D,S) -> sum(S) / Tfun(D)^2 / length(edges)
-#statistic = zeros(Float64, tmax)
-#for t in 1:tmax
-#    for τ in 0:min(tmax-t, t_cutoff)
-#        statistic[t] += (τ==0 ? 0.5 : 1.0) * J[1,t] * J[1,t+τ] / (tmax-τ)
-#    end
-#end
-#κ_μ, κ_σ = MyBootstrap([D, statistic], κfun, t_autocorr, N_blocks)
-# -
-
 # ### Single Simulation Run
 
-@everywhere function DKuboSingle(vertices, edges, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽)
+@everywhere function DKuboSingle(vertices, edges, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T)
     
-    Dfun = (T) -> δE/(exp(δE/T)-1) + 2*𝒽/(exp(2*𝒽/T)+1)
-    D2fun = (T) -> sign(T)*Dfun(abs(T)) # makes D(T) an odd function so bracketing works better
-    Tfun = (D) -> 𝒽>0 ? find_zero((T) -> D2fun(T)-mean(D), (T-5, T+5)) : δE/log(1.0 + δE/mean(D)) # need to use exact for h=0 otherwise we get issues bootstrapping samples where all D=0...
-    CDfun = (D) -> length(edges) * (δE^2 * exp(δE/Tfun(D))/(exp(δE/Tfun(D))-1)^2 + (2*𝒽)^2 * exp(2*𝒽/Tfun(D))/(exp(2*𝒽/Tfun(D))+1)^2) / Tfun(D)^2
+    Dfun = (T) -> δE/(exp(δE/T)-1)
+    Tfun = (D) -> δE/log(1.0 + δE/mean(D))
+    CDfun = (D) -> length(edges) * (δE/Tfun(D))^2 * exp(δE/Tfun(D)) / (exp(δE/Tfun(D))-1)^2
     Cfun = (D,E) -> CDfun(D) * Var(E) /(CDfun(D)*Tfun(D)^2 - Var(E)) / length(edges)
-    κfun = (D,S) -> mean(S) / Tfun(D)^2 / length(edges)
+    κfun = (D,S) -> sum(S) / Tfun(D)^2 / length(edges)
     Dfun = (D,E,S) -> κfun(D, S) / Cfun(D, E)
     
     tmax = runtime-t_therm
     
     # -- 0. Run Simulation --
-    DemonKuboSetup(vertices, edges, T, 𝒽)
-    J, D, E = DemonKubo(vertices, edges, runtime, 𝒽)
+    DemonKuboSetup(vertices, edges, T)
+    J, D, E = DemonKubo(vertices, edges, runtime)
 
     # cut out thermalisation time
     J = J[:,t_therm+1:end]
@@ -130,41 +117,52 @@ end
     #t_autocorr = IntAutocorrTime([D, E, J[1,:]])
     
     # -- 1. Temperature --
-    T_μ, T_σ = MyBootstrap([D], Tfun, t_autocorr, N_blocks)
+    T_μ, T_s = MyBootstrap([D], Tfun, t_autocorr, N_blocks)
     
     # -- 2. Heat Capacity --
-    C_μ, C_σ = MyBootstrap([D, E], Cfun, t_autocorr, N_blocks)
+    C_μ, C_s = MyBootstrap([D, E], Cfun, t_autocorr, N_blocks)
     
     # -- 3. Thermal Conductivity and Diffusivity--
-    κ_μ = 0
-    κ_v = 0
-    D_μ = 0
-    D_v = 0
-    for τ in 0:t_cutoff
-        statistic = (τ==0 ? 0.5 : 1.0) .* J[1,:] .* circshift(J[1,:], -τ)
-        
-        tmp1, tmp2 = MyBootstrap([D[1:end-τ], statistic[1:end-τ]], κfun, t_autocorr, N_blocks)
-        κ_μ += tmp1
-        κ_v += tmp2^2
-        
-        tmp1, tmp2 = MyBootstrap([D[1:end-τ], E[1:end-τ], statistic[1:end-τ]], Dfun, t_autocorr, N_blocks)
-        D_μ += tmp1
-        D_v += tmp2^2
+    statistic = zeros(Float64, tmax)
+    for t in 1:tmax
+        for τ in 0:min(tmax-t, t_cutoff)
+            statistic[t] += (τ==0 ? 0.5 : 1.0) * J[1,t] * J[1,t+τ] / (tmax-τ)
+        end
     end
+    κ_μ, κ_s = MyBootstrap([D, statistic], κfun, t_autocorr, N_blocks)
+    D_μ, D_s = MyBootstrap([D, E, statistic], Dfun, t_autocorr, N_blocks)
     
-    #push!(testing, [T, 𝒽, IntAutocorrTime([D, E, J[1,:], J[2,:]])])
-    
-    return [T_μ κ_μ C_μ D_μ; T_σ^2 κ_v C_σ^2 D_v]
+    return [T_μ κ_μ C_μ D_μ; T_s^2 κ_s^2 C_s^2 D_s^2]
 end
+
+# +
+# Old conductivity calculation (ASSUMES EACH CORRELATION TERM INDEP BUT DOESN'T SUFFER FROM NAN SAMPLES AS MUCH!!)
+#κ_μ = 0
+#κ_s = 0
+#D_μ = 0
+#D_s = 0
+#for τ in 0:t_cutoff
+#    statistic = (τ==0 ? 0.5 : 1.0) .* J[1,:] .* circshift(J[1,:], -τ)
+#    statistic /= length(statistic)
+#    
+#    tmp1, tmp2 = MyBootstrap([D[1:end-τ], statistic[1:end-τ]], κfun, t_autocorr, N_blocks)
+#    κ_μ += tmp1
+#    κ_s += tmp2
+#    
+#    tmp1, tmp2 = MyBootstrap([D[1:end-τ], E[1:end-τ], statistic[1:end-τ]], Dfun, t_autocorr, N_blocks)
+#    D_μ += tmp1
+#    D_s += tmp2
+#end
+# -
 
 # ### Overall simulation routine
 
-function DKuboSimulation(L, PBC, Basis, num_histories, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽)
+function DKuboSimulation(L, PBC, Basis, num_histories, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T)
     
     vertices, edges = LatticeGrid(L, PBC, Basis)
     
-    ks = range(1,length(T)*length(𝒽)*num_histories)
-    args = [[deepcopy(vertices), deepcopy(edges), runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T[div(div(k-1,num_histories),length(𝒽))+1], 𝒽[rem(div(k-1,num_histories),length(𝒽))+1]] for k=ks]
+    ks = range(1,length(T)*num_histories)
+    args = [[deepcopy(vertices), deepcopy(edges), runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T[div(k-1,num_histories)+1]] for k=ks]
     
     function hfun(args)
         return DKuboSingle(args...)
@@ -181,18 +179,17 @@ function DKuboSimulation(L, PBC, Basis, num_histories, runtime, t_therm, t_autoc
     end 
     
     
-    tmp = zeros(2,4,length(T),length(𝒽),num_histories) # rows for mean and stdv of T,κ,C
+    tmp = zeros(2,4,length(T),num_histories) # rows for mean and stdv of T,κ,C
     for k in ks
-        ni,h = divrem(k-1,num_histories) .+ (1,1)
-        n,i = divrem(ni-1,length(𝒽)) .+ (1,1)
+        n,h = divrem(k-1,num_histories) .+ (1,1)
         
-        tmp[:,:,n,i,h] = results[k]
+        tmp[:,:,n,h] = results[k]
     end
     tmp = sum(tmp, dims=5)
     
     # average over observables for all histories - okay b/c iid random variables
-    tmp[2,:,:,:] = sqrt.(tmp[2,:,:,:])
+    tmp[2,:,:] = sqrt.(tmp[2,:,:])
     tmp ./= num_histories
         
-    return tmp[1,1,:,:], tmp[1,2,:,:], tmp[1,3,:,:], tmp[1,4,:,:], tmp[2,1,:,:], tmp[2,2,:,:], tmp[2,3,:,:], tmp[2,4,:,:]
+    return tmp[1,1,:], tmp[1,2,:], tmp[1,3,:], tmp[1,4,:], tmp[2,1,:], tmp[2,2,:], tmp[2,3,:], tmp[2,4,:]
 end
