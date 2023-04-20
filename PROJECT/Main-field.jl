@@ -22,11 +22,19 @@ include(dir * "/functions/Preamble.jl")
 @everywhere dir = dirname(pwd()) * "/PROJECT"
 
 t0 = now()
-# -
 
-@everywhere global const sixVertex::Bool = false
+# +
+# Hamiltonian constants
+@everywhere global const λ::Float = 1
+@everywhere global const 𝒥::Float = 0
+
+# which dynamics to use (only affects microcanonical functions)
 @everywhere global const twoFlip::Bool = true
-@everywhere global const δE::Int = sixVertex ? 8 : 4
+
+# demon quantisation
+@assert 𝒥==0 || λ==0 # otherwise demons will break b/c not quantised
+@everywhere global const δE::Int = (λ==0) ? 8*𝒥 : 4*λ
+# -
 
 # Lx  Ly  nT    t     t_th
 # 50  50  50  50000  10000
@@ -48,7 +56,7 @@ t0 = now()
 
 # +
 # PARAMETERS
-L = [15, 15]
+L = [10, 10]
 PBC = [true, true]
 Basis = CubicBasis(length(L))
 
@@ -60,7 +68,7 @@ T = range(Tmin, Tmax, length=NumT)
 
 𝒽 = range(0, 1, length=7)
 
-num_histories = 3
+num_histories = 10
 therm_runtime = 10000
 runtime = 10000
 t_therm = 5000

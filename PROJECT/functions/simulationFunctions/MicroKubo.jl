@@ -24,7 +24,7 @@
         end
     else # initialise entire system in ground state
         for edge in edges
-            if sixVertex
+            if λ == 0
                 edge.σ = vertices[edge.∂[1]].x[1]-vertices[edge.∂[2]].x[1]==0 # gives ~GS ONLY for PBCs on square lattice
             else
                 edge.σ = false
@@ -97,7 +97,7 @@ end
             ΣA = A(edges, vertices[i]) + A(edges, vertices[𝒊[1]]) + A(edges, vertices[𝒊[2]])
             
             # calculate overall energy change and current density between the two unshared vertices
-            ΔE = ΔE_2flip(vertices, edges, 𝜷, 𝒊, 𝒽)
+            ΔE = ΔE_2flip(vertices, edges, 𝜷, 𝒊, i, 𝒽)
             Δj = Δj_2flip(vertices, edges, 𝜷, 𝒊, 𝒽)
                 
             # decide whether to accept and perform the move
@@ -175,17 +175,18 @@ end
     # -- 1. Heat Capacity --
     C_μ, C_s = Estimator(Bootstrap, [E], Cfun, t_autocorr, N_blocks)
     
-    # -- 2. Thermal Conductivity and Diffusivity--s
+    # -- 2. Thermal Conductivity and Diffusivity--
+    dim = length(vertices[1].x)
+    
     statistic = zeros(Float64, tmax)
     for t in 1:tmax
         for τ in 0:min(tmax-t, t_cutoff)
-            statistic[t] += (τ==0 ? 0.5 : 1.0) * J[1,t] * J[1,t+τ] / (tmax-τ)
+            statistic[t] += (τ==0 ? 0.5 : 1.0) * J[1,t+τ] * J[1,t] / (tmax-τ)
         end
     end
+    
     κ_μ, κ_s = Estimator(Bootstrap, [statistic], κfun, t_autocorr, N_blocks)
     D_μ, D_s = Estimator(Bootstrap, [E, statistic], Dfun, t_autocorr, N_blocks)
-    
-    #push!(testing, [T, 𝒽, IntAutocorrTime([E, J[1,:], J[2,:]])])
     
     return [κ_μ C_μ D_μ abs.(M) ℙ; κ_s^2 C_s^2 D_s^2 0 0]
 end

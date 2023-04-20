@@ -22,15 +22,19 @@ include(dir * "/functions/Preamble.jl")
 @everywhere dir = dirname(pwd()) * "/PROJECT"
 
 t0 = now()
-# -
 
-@everywhere global const sixVertex::Bool = true
+# +
+# Hamiltonian constants
+@everywhere global const λ::Float64 = 1
+@everywhere global const ξ::Float64 = 0
+
+# which dynamics to use (only affects microcanonical functions)
 @everywhere global const twoFlip::Bool = false
-@everywhere global const δE::Int = sixVertex ? 8 : 4
 
-# Lx  Ly  nT    t     t_th
-# 50  50  50  50000  10000
-# 25  25  25  10000   2500
+# demon quantisation
+@assert ξ==0 || λ==0 # otherwise demons will break b/c not quantised
+@everywhere global const δE::Int = (λ==0) ? 8*ξ : 4*λ
+# -
 
 # ## Data Structure
 #
@@ -60,8 +64,8 @@ t_autocorr = 1
 N_blocks = -1
 
 W = 5
-Tc = 0.1 * (sixVertex ? 1.0 : 0.5)
-Th = 10.0 * (sixVertex ? 1.0 : 0.5)
+Tc = 0.1 * (λ == 0 ? 1.0 : 0.5)
+Th = 10.0 * (λ == 0 ? 1.0 : 0.5)
 
 T, κ, C, TStd, κStd, CStd = BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, runtime, t_therm, t_autocorr, N_blocks);
 
@@ -114,9 +118,9 @@ PBC = [true, true]
 Basis = CubicBasis(length(L))
 
 # find minimal representable temperature (just done for 𝒽=0 for now - MAYBE MODIFY TO PICK MAX OVER DIFF FIELDS??
-Nmin = (T,h) -> (sixVertex ? 2/(4*exp(-4/T)/3+h*exp(-2*h/T)) : 2/(exp(-2/T)+2*h*exp(-2*h/T))) # minimal lattice size on which T=Tmin is possible - see https://www.desmos.com/calculator/ll1ljvjmcg for details
+Nmin = (T,h) -> (λ == 0 ? 2/(4*exp(-4/T)/3+h*exp(-2*h/T)) : 2/(exp(-2/T)+2*h*exp(-2*h/T))) # minimal lattice size on which T=Tmin is possible - see https://www.desmos.com/calculator/ll1ljvjmcg for details
 Tmin = find_zero((T) -> prod(L)-Nmin(T,0), 0.3)
-Tmax = 10.0 * (sixVertex ? 1.0 : 0.5)
+Tmax = 10.0 * (λ == 0 ? 1.0 : 0.5)
 NumT = 50
 T = collect(range(Tmin, Tmax, length=NumT)) # the +0.1 is a fudge factor to fix our approximations earlier... (exact value doesn't matter b/c just adds ~a single demon)
 
@@ -186,7 +190,7 @@ Tmin = 0.01
 Tmax = 10.0
 NumT = 50
 
-#Tmax *= (sixVertex ? 1.0 : 0.5)
+#Tmax *= (λ == 0 ? 1.0 : 0.5)
 T = range(Tmin, Tmax, length=NumT)
 
 𝒽 = [0] #range(0, 1, length=7)
@@ -252,8 +256,8 @@ savefig("figs/Micro_Kubo_Percolation.png")
 
 # +
 figure()
-nfun0 = (T) -> 0.5 .* (1 .- tanh.(1 ./ T))
-nfun = (T, h) -> 1 ./ (1 .+ exp.(2 ./ T) .* exp.(h ./ T ./ sqrt.(nfun0(T))))
+nfun0 = (T) -> 0.5 .* (1 .- tanh.(λ ./ T))
+nfun = (T, h) -> 1 ./ (1 .+ exp.(2 .* λ ./ T) .* exp.(h ./ T ./ sqrt.(nfun0(T))))
 Kfun = (T, h) -> (2 .* nfun(T, h) ./ T.^2) .* (1 .- nfun(T, h)) .* (1 .- Mfun(T, h)) ./ 2 # additional magnetisation factor for +-+- bond percolation
 Kfun0 = (T, h) -> (2 .* nfun0(T) ./ T.^2) .* (1 .- nfun0(T)) .* (1 .- Mfun(T, h)) ./ 2
 
@@ -267,7 +271,7 @@ savefig("figs/Micro_Kubo_Conductivity.png")
 # -
 
 figure()
-Cfun = (T, h) -> (sech.(1 ./T).^2 + 2 * h^2 .* sech.(h ./T).^2) ./ 2 ./ T.^2
+Cfun = (T, h) -> (sech.(1 ./T).^2 + 2 * h^2 .* sech.(h ./T).^2) ./ 2 .* λ ./ T.^2
 for n in 1:size(κ, 2)
     #plot(T, Cfun(T, 𝒽[n]), color=colors[n])
     plotWithError(C[:,n], T, colors[n], CStd[:,n])
@@ -379,7 +383,7 @@ figure() # density of quasiparticles
 p = mean(p, dims=3) ./ Nv
 
 if length(T) > 0
-    nfun0 = (T) -> (1 .- tanh.(1 ./ T)) ./ 2
+    nfun0 = (T) -> (1 .- tanh.(λ ./ T)) ./ 2
     Mfun0 = (T, h) -> tanh.(h ./ T)
     nfun = (T, h) -> nfun0(T .* (1 .- h .* Mfun0(T, h) ./ 2)) # 
     nfun2 = (T, h) -> nfun0(T ./ (1 .+ h .* Mfun0(T, h) ./ 2))
@@ -401,14 +405,14 @@ savefig("figs/Quasiparticle Number.png")
 
 # +
 figure() # diffusion coefficient
-nfun0 = (T) -> (1 .- tanh.(1 ./ T)) ./ 2
-#nfun  = (T, h) -> 1 ./ (1 .+ exp.(2 ./ T) .* exp.(h ./ T ./ sqrt.(nfun0(T))))
+nfun0 = (T) -> (1 .- tanh.(λ ./ T)) ./ 2
+#nfun  = (T, h) -> 1 ./ (1 .+ exp.(2 .* λ ./ T) .* exp.(h ./ T ./ sqrt.(nfun0(T))))
 #Dfun  = (T, h) -> (1 .- nfun(T, h)) .* (1 .- Mfun(T, h)) ./ 2
 DfunPlus = (T, h) -> (1 .- nfun0(T)) .* (1 .+ Mfun(T, h)) ./ 2
 DfunMinus = (T, h) -> (1 .- nfun0(T)) .* (1 .- Mfun(T, h)) ./ 2
 
-#nfun = (T) -> sixVertex ? 4 .* (exp.(-4 ./ T) .+ exp.(-16 ./ T)) ./ (3 .+ 4 .* exp.(-4 ./ T) .+ exp.(-16 ./ T)) : 0.5 .* (1 .- tanh.(1 ./ T))
-#Dfun = (n) -> sixVertex ? 7/12 .* (1 .- n) : 1 .* (1 .- n)
+#nfun = (T) -> λ == 0 ? 4 .* (exp.(-4 ./ T) .+ exp.(-16 ./ T)) ./ (3 .+ 4 .* exp.(-4 ./ T) .+ exp.(-16 ./ T)) : 0.5 .* (1 .- tanh.(λ ./ T))
+#Dfun = (n) -> λ == 0 ? 7/12 .* (1 .- n) : 1 .* (1 .- n)
 
 if length(T) > 0
     for i in eachindex(𝒽)

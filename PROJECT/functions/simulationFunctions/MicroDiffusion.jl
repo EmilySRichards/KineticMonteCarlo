@@ -19,7 +19,7 @@
 @everywhere function MicroDiffnSetup(vertices, edges, numToFlip)
     # initialise entire system in ground state
     for edge in edges
-        if sixVertex
+        if λ == 0
             edge.σ = vertices[edge.∂[1]].x[1]-vertices[edge.∂[2]].x[1]==0 # gives ~GS ONLY for PBCs on square lattice
         else
             edge.σ = false
@@ -63,7 +63,7 @@ end
     # find all the excitations
     js = []
     for j in eachindex(vertices)
-        if (sixVertex ? Atilde(edges, vertices[j])==4 : A(edges, vertices[j])<0) # in 6-vertex case, A_e = 2^2 = 4, A_2e = 4^2 = 16
+        if (λ == 0 ? B(edges, vertices[j]) == 4 : A(edges, vertices[j]) == -1) # in 6-vertex case, A_e = 2^2 = 4, A_2e = 4^2 = 16
             push!(js, j)
         end
     end
@@ -122,7 +122,7 @@ end
     # find all the excitations
     js = []
     for j in eachindex(vertices)
-        if (sixVertex ? Atilde(edges, vertices[j])==4 : A(edges, vertices[j])<0) # in 2D spin ice case, A_e = 2^2 = 4, A_2e = 4^2 = 16
+        if (λ == 0 ? B(edges, vertices[j]) == 4 : A(edges, vertices[j]) == -1) # in 2D spin ice case, A_e = 2^2 = 4, A_2e = 4^2 = 16
             push!(js, j)
         end
     end
@@ -147,7 +147,7 @@ end
             ΣA = A(edges, vertices[i]) + A(edges, vertices[𝒊[1]]) + A(edges, vertices[𝒊[2]])
             
             # calculate overall energy change and current density between the two unshared vertices
-            ΔE = ΔE_2flip(vertices, edges, 𝜷, 𝒊, 𝒽)
+            ΔE = ΔE_2flip(vertices, edges, 𝜷, 𝒊, i, 𝒽)
             Δj = Δj_2flip(vertices, edges, 𝜷, 𝒊, 𝒽)
 
             # decide whether to accept and perform the move

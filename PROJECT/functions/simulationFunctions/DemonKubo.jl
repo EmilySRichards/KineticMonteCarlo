@@ -20,7 +20,7 @@
     
     # REinitialise entire system in ground state
     for edge in edges
-        if sixVertex
+        if λ == 0
             edge.σ = vertices[edge.∂[1]].x[1]-vertices[edge.∂[2]].x[1]==0 # gives ~GS ONLY for PBCs on square lattice
         else
             edge.σ = false
@@ -29,17 +29,17 @@
     end
 
     # calculate total demon energy for given temperature T
-    D_tot = sixVertex ? 0 : length(vertices)
+    D_tot = (λ == 0) ? 0 : length(vertices)
     for edge in edges
         D_tot += δE/(exp(δE/T)-1)
     end
     
-    if sixVertex
-        Aavg = 16*(exp(-4/T)+exp(-16/T))/(3+4*exp(-4/T)+exp(-16/T))
+    if λ == 0
+        Aavg = 16*(exp(-4*ξ/T)+exp(-16*ξ/T))/(3+4*exp(-4*ξ/T)+exp(-16*ξ/T))
     else
-        Aavg = tanh(1/T)
+        Aavg = tanh(λ/T)
     end
-    D_tot += length(vertices) * (sixVertex ? Aavg : -Aavg)
+    D_tot += length(vertices) * ((λ == 0) ? Aavg : -Aavg)
     
     # randomly increment demon energies
     while D_tot>0 # while loop

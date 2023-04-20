@@ -212,7 +212,7 @@ function BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, 
     Bh_j, Bc_j, Bh_α, Bc_α, strips = BathSetup(vertices, edges, L[1], W)
     
     # initialise spins in ground state
-    if sixVertex
+    if λ == 0
         for edge in edges # gives ~GS (exact for PBCs) for square lattice
             edge.σ = vertices[edge.∂[1]].x[1]-vertices[edge.∂[2]].x[1]==0
         end

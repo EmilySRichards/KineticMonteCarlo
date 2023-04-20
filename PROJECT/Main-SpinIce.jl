@@ -22,11 +22,19 @@ include(dir * "/functions/Preamble.jl")
 @everywhere dir = dirname(pwd()) * "/PROJECT"
 
 t0 = now()
-# -
 
-@everywhere global const sixVertex::Bool = true
-@everywhere global const twoFlip::Bool = false
-@everywhere global const δE::Int = sixVertex ? 8 : 4
+# +
+# Hamiltonian constants
+@everywhere global const λ::Float64 = 1
+@everywhere global const ξ::Float64 = 0
+
+# which dynamics to use (only affects microcanonical functions)
+@everywhere global const twoFlip::Bool = true
+
+# demon quantisation
+@assert ξ==0 || λ==0 # otherwise demons will break b/c not quantised
+@everywhere global const δE::Int = (λ==0) ? 8*ξ : 4*λ
+# -
 
 # Lx  Ly  nT    t     t_th
 # 50  50  50  50000  10000
@@ -56,7 +64,7 @@ Tmin = 0.01
 Tmax = 10.0
 NumT = 50
 
-#Tmax *= (sixVertex ? 1.0 : 0.5)
+#Tmax *= (λ == 0 ? 1.0 : 0.5)
 T = range(Tmin, Tmax, length=NumT)
 
 𝒽 = [0.0] #range(0, 1, length=7)
@@ -268,8 +276,8 @@ nfun0 = (T) -> (1 .- tanh.(1 ./ T)) ./ 2
 DfunPlus = (T, h) -> (1 .- nfun0(T)) .* (1 .+ Mfun(T, h)) ./ 2
 DfunMinus = (T, h) -> (1 .- nfun0(T)) .* (1 .- Mfun(T, h)) ./ 2
 
-#nfun = (T) -> sixVertex ? 4 .* (exp.(-4 ./ T) .+ exp.(-16 ./ T)) ./ (3 .+ 4 .* exp.(-4 ./ T) .+ exp.(-16 ./ T)) : 0.5 .* (1 .- tanh.(1 ./ T))
-#Dfun = (n) -> sixVertex ? 7/12 .* (1 .- n) : 1 .* (1 .- n)
+#nfun = (T) -> λ == 0 ? 4 .* (exp.(-4 ./ T) .+ exp.(-16 ./ T)) ./ (3 .+ 4 .* exp.(-4 ./ T) .+ exp.(-16 ./ T)) : 0.5 .* (1 .- tanh.(1 ./ T))
+#Dfun = (n) -> λ == 0 ? 7/12 .* (1 .- n) : 1 .* (1 .- n)
 
 if length(T) > 0
     for i in eachindex(𝒽)
