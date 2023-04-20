@@ -187,9 +187,9 @@ end
         CDfun = (D) -> NumSpins[x] * (δE/Tfun(D))^2 * exp(δE/Tfun(D))/(exp(δE/Tfun(D))-1)^2
         Cfun = (D, E) -> CDfun(D) * Var(E) /(CDfun(D)*Tfun(D)^2 - Var(E)) / NumSpins[x] # THIS ALSO NEEDS TO BE CHANGED FOR 
         
-        T_μ[x], T_σ[x] = MyBootstrap([avgD[x,:]], Tfun, t_autocorr, N_blocks)
-        C_μ[x], C_σ[x] = MyBootstrap([avgD[x,:], totD[x,:]], Cfun, t_autocorr, N_blocks)
-        κ_μ[x], κ_σ[x] = MyBootstrap([ΔEc, ΔEh, avgD[x-1,:], avgD[x+1,:]], κfun, t_autocorr, N_blocks)
+        T_μ[x], T_σ[x] = Estimator(Bootstrap, [avgD[x,:]], Tfun, t_autocorr, N_blocks)
+        C_μ[x], C_σ[x] = Estimator(Bootstrap, [avgD[x,:], totD[x,:]], Cfun,  t_autocorr, N_blocks)
+        κ_μ[x], κ_σ[x] = Estimator(Bootstrap, [ΔEc, ΔEh, avgD[x-1,:], avgD[x+1,:]], κfun, t_autocorr, N_blocks)
     end
     
     result = zeros(2, 3, length(strips))
@@ -250,7 +250,7 @@ function BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, 
         
         tmp[:,:,n,:,h] = results[k]
     end
-    tmp = sum(tmp, dims=6)
+    tmp = sum(tmp, dims=5)
     
     # average over observables for all histories - okay b/c iid random variables
     tmp[2,:,:,:] = sqrt.(tmp[2,:,:,:])

@@ -14,6 +14,13 @@
 #     name: julia-(6-threads)-1.8
 # ---
 
+# ### Enum type for different methods
+@enum Method begin
+   Bootstrap = 1
+   Jackknife = 2
+   None = 3
+end
+
 # ### Jackknife & Bootstrap Algorithms
 
 # https://www.physik.uni-leipzig.de/~spitzner/publications/Spitzner_bootstrap.pdf
@@ -28,11 +35,14 @@
     
     fmavg = [fun(samples[n]...) for n in 1:M] # run function on all resamplings
     
-    favg1 = mean(fmavg) # biased jackknife estimator
-    favg = (N*fun(x...) - (N-M)*favg1)/M # UNbiased jackknife estimator
-    ferr = sqrt(sum((fmavg .- favg1).^2)*(M-1)/M) # error in estimator
+    𝐟𝐦𝐚𝐯𝐠 = filter(!isnan, fmavg) # **filters out bad samples where the estimator is undefined**
+    𝐌 = length(fmavg) # adjust M to account for that
+    
+    𝐟𝐚𝐯𝐠1 = mean(𝐟𝐦𝐚𝐯𝐠) # biased jackknife estimator
+    𝐟𝐚𝐯𝐠 = (N*fun(x...) - (N-𝐌)*𝐟𝐚𝐯𝐠1)/𝐌 # UNbiased jackknife estimator
+    𝐟𝐞𝐫𝐫 = sqrt(sum((𝐟𝐦𝐚𝐯𝐠 .- 𝐟𝐚𝐯𝐠1).^2)*(𝐌-1)/𝐌) # error in estimator
 
-    return favg, ferr
+    return 𝐟𝐚𝐯𝐠, 𝐟𝐞𝐫𝐫
 end
 
 # https://www.physik.uni-leipzig.de/~spitzner/publications/Spitzner_bootstrap.pdf
@@ -60,12 +70,18 @@ end
     return 𝐟𝐚𝐯𝐠, 𝐟𝐞𝐫𝐫
 end
 
-# ### Override Bootstrap because it's currently broken!!!
+# ### Add capability to override Bootstrap because it fails for heat bath method!!!
 
-#@everywhere function MyBootstrap(x, fun, W, Nbps = -1)
-#    return fun(x...), 0 # MyJackknife(x, fun, W) # 
-#end
-# BOOTSTRAP DISABLED - CURRENTLY FAILS FOR LOW TEMPERATURES??? PERHAPS B/C AUTOCORRELATION EFFECTS LARGE??
+@everywhere function Estimator(method, x, fun, W=1, Nbps=-1)
+    if method==Bootstrap
+        return MyBootstrap(x, fun, W, Nbps)
+    elseif method==Jackknife
+        return MyJackknife(x, fun, W)
+    else
+        return fun(x...), 0
+    end
+end
+
 
 # ### Autocorrelation function
 

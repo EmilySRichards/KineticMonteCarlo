@@ -24,8 +24,8 @@ include(dir * "/functions/Preamble.jl")
 t0 = now()
 # -
 
-@everywhere global const sixVertex::Bool = false
-@everywhere global const twoFlip::Bool = true
+@everywhere global const sixVertex::Bool = true
+@everywhere global const twoFlip::Bool = false
 @everywhere global const δE::Int = sixVertex ? 8 : 4
 
 # Lx  Ly  nT    t     t_th
@@ -48,7 +48,7 @@ t0 = now()
 @everywhere include(dir * "/functions/simulationFunctions/DemonHeatBath.jl")
 
 # +
-L = [15, 15]
+L = [25, 25]
 PBC = [false, true]
 Basis = CubicBasis(length(L))
 
@@ -56,8 +56,8 @@ num_histories = 1
 therm_runtime = 100
 runtime = 500
 t_therm = 100
-t_autocorr = 100
-N_blocks = 2*floor(Int64, runtime/t_autocorr)
+t_autocorr = 1
+N_blocks = -1
 
 W = 5
 Tc = 0.1 * (sixVertex ? 1.0 : 0.5)
@@ -76,19 +76,20 @@ colors = jetmap(2)
 
 figure()
 for n in 1:2
-    plotWithError(T[n,:], collect(1:size(T, 2)), colors[n], TStd[n,:])
+    plotWithError(T[n,idx], 1:length(idx), colors[n], TStd[n,idx])
 end
 savefig("figs/Demon_Bath_Temperatures.png")
 
 figure()
 for n in 1:2
-    plotWithError(κ[n,:], T[n,:], colors[n], κStd[n,:], TStd[n,:])
+    plotWithError(κ[n,idx], T[n,idx], colors[n], κStd[n,idx], TStd[n,idx])
 end
+ylim([0, 0.3])
 savefig("figs/Demon_Bath_Conductivity.png")
 
 figure()
 for n in 1:2
-    plotWithError(C[n,:], T[n,:], colors[n], CStd[n,:], TStd[n,:])
+    plotWithError(C[n,idx], T[n,idx], colors[n], CStd[n,idx], TStd[n,idx])
 end
 savefig("figs/Demon_Bath_Capacity.png")
 
@@ -108,7 +109,7 @@ print("\n", canonicalize(t1 - t0))
 #global testing = []
 
 # PARAMETERS
-L = [15, 15]
+L = [25, 25]
 PBC = [true, true]
 Basis = CubicBasis(length(L))
 
@@ -124,7 +125,7 @@ runtime = 10000
 t_cutoff = 100
 t_therm = 5000
 t_autocorr = 100
-N_blocks = 2*floor(Int64, runtime/t_autocorr)
+N_blocks = -1
 
 # EVALUATION
 Tobs, κ, C, Diff, TobsStd, κStd, CStd, DiffStd = DKuboSimulation(L, PBC, Basis, num_histories, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T);
@@ -148,19 +149,19 @@ figure()
 for n in 1:size(Tobs, 2)
     plotWithError(κ, Tobs, colors[1], κStd, TobsStd)
 end
+ylim([0, 0.3])
 savefig("figs/Demon_Kubo_Conductivity.png")
 
-# +
 figure()
 #plot(T, 0.5 ./ T.^2 ./ cosh.(1 ./T).^2, color=:black)
 plotWithError(C, Tobs, colors[1], CStd, TobsStd)
-
+ylim([0, 0.3])
 savefig("figs/Demon_Kubo_Capacity.png")
-# -
 
 figure()
 #plot(T, ones(size(T)), color=:black)
 plotWithError(Diff, Tobs, colors[1], DiffStd, TobsStd)
+ylim([0, 2.0])
 savefig("figs/Demon_Kubo_Diff.png")
 
 κ = Nothing
@@ -177,7 +178,7 @@ print(canonicalize(t2 - t1))
 
 # +
 # PARAMETERS
-L = [15, 15]
+L = [25, 25]
 PBC = [true, true]
 Basis = CubicBasis(length(L))
 
@@ -195,7 +196,7 @@ therm_runtime = 10000
 runtime = 10000
 t_therm = 5000
 t_autocorr = 100
-N_blocks = 2*floor(Int64, runtime/t_autocorr)
+N_blocks = -1
 t_cutoff = 100
 
 
@@ -261,6 +262,7 @@ for n in 1:size(κ, 2)
     #plot(T, Kfun0(T, 𝒽[n]), color=colors[n])
     plotWithError(κ[:,n], T, colors[n], κStd[:,n])
 end
+ylim([0, 0.3])
 savefig("figs/Micro_Kubo_Conductivity.png")
 # -
 
@@ -270,9 +272,9 @@ for n in 1:size(κ, 2)
     #plot(T, Cfun(T, 𝒽[n]), color=colors[n])
     plotWithError(C[:,n], T, colors[n], CStd[:,n])
 end
+ylim([0, 0.3])
 savefig("figs/Micro_Kubo_Capacity.png")
 
-# +
 figure()
 Dfun = (T, h) -> Kfun(T, h) ./ Cfun(T, h)
 Dfun0  = (T, h) -> Kfun0(T, h) ./ Cfun(T, h)
@@ -282,9 +284,7 @@ for n in 1:size(κ, 2)
     plotWithError(Diff[:,n], T, colors[n], DiffStd[:,n])
 end
 savefig("figs/Micro_Kubo_Diff.png")
-
-ylim([0,1])
-# -
+ylim([0, 2.0])
 
 κ = Nothing
 C_σ = Nothing
@@ -299,18 +299,18 @@ print("\n", canonicalize(t3 - t2))
 @everywhere include(dir * "/functions/simulationFunctions/MicroDiffusion.jl")
 
 # +
-L = [15, 15]
+L = [25, 25]
 PBC = [true, true]
 Basis = CubicBasis(length(L))
 
 therm_runtime = 1000
 runtime = 1000
 tau = 2:floor(Int64, 0.75*runtime)
-num_histories = 1
+num_histories = 50
 𝒽 = [0.0] #range(0.0, 2.0, length=7)
 
-T = range(0.01, 10.0, length=20);
-ℓ = []; # floor.(Int64, range(1, prod(L)/4, length=20));
+T = []; range(0.01, 10.0, length=20);
+ℓ = [1, 1]; # floor.(Int64, range(1, prod(L)/4, length=20));
 
 
 x, δ, Mag, Perc, p, Nv = DiffSim(L, PBC, Basis, therm_runtime, runtime, ℓ, T, 𝒽)
@@ -324,8 +324,12 @@ Mag = mean(Mag, dims=3)
 
 figure()
 for i in eachindex(𝒽)
-    scatter(T, Mag[:,i], color=colors[i])
-    #plot(T, Mfun(T, 𝒽[i]), color=colors[i])
+    if length(T) > 0
+        scatter(T, Mag[:,i], color=colors[i])
+        #plot(T, Mfun(T, 𝒽[i]), color=colors[i])
+    elseif length(ℓ) > 0
+        scatter(ℓ, Mag[:,i], color=colors[i])
+    end
 end
 savefig("figs/Magnetisation.png")
 
@@ -334,8 +338,13 @@ Perc = mean(Perc, dims=3)
 
 figure()
 for i in eachindex(𝒽)
-    scatter(T, Perc[:,i], color=colors[i])
+    if length(T) > 0
+        scatter(T, Perc[:,i], color=colors[i])
+    elseif length(ℓ) > 0
+        scatter(ℓ, Perc[:,i], color=colors[i])
+    end
 end
+
 savefig("figs/Percolation.png")
 # -
 

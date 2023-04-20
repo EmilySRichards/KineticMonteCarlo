@@ -173,7 +173,7 @@ end
     E = E[t_therm+1:end]
     
     # -- 1. Heat Capacity --
-    C_μ, C_s = MyBootstrap([E], Cfun, t_autocorr, N_blocks)
+    C_μ, C_s = Estimator(Bootstrap, [E], Cfun, t_autocorr, N_blocks)
     
     # -- 2. Thermal Conductivity and Diffusivity--s
     statistic = zeros(Float64, tmax)
@@ -182,8 +182,8 @@ end
             statistic[t] += (τ==0 ? 0.5 : 1.0) * J[1,t] * J[1,t+τ] / (tmax-τ)
         end
     end
-    κ_μ, κ_s = MyBootstrap([statistic], κfun, t_autocorr, N_blocks)
-    D_μ, D_s = MyBootstrap([E, statistic], Dfun, t_autocorr, N_blocks)
+    κ_μ, κ_s = Estimator(Bootstrap, [statistic], κfun, t_autocorr, N_blocks)
+    D_μ, D_s = Estimator(Bootstrap, [E, statistic], Dfun, t_autocorr, N_blocks)
     
     #push!(testing, [T, 𝒽, IntAutocorrTime([E, J[1,:], J[2,:]])])
     
@@ -199,11 +199,11 @@ end
 #    statistic = (τ==0 ? 0.5 : 1.0) .* J[1,:] .* circshift(J[1,:], -τ)
 #    statistic /= length(statistic)
 #    
-#    tmp1, tmp2 = MyBootstrap([statistic[1:end-τ]], κfun, t_autocorr, N_blocks)
+#    tmp1, tmp2 = Estimator(Bootstrap, [statistic[1:end-τ]], κfun, t_autocorr, N_blocks)
 #    κ_μ += tmp1
 #    κ_s += tmp2
 #    
-#    tmp1, tmp2 = MyBootstrap([E[1:end-τ], statistic[1:end-τ]], Dfun, t_autocorr, N_blocks)
+#    tmp1, tmp2 = Estimator(Bootstrap, [E[1:end-τ], statistic[1:end-τ]], Dfun, t_autocorr, N_blocks)
 #    D_μ += tmp1
 #    D_s += tmp2
 #end

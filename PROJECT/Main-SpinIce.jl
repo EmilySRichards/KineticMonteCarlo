@@ -59,27 +59,20 @@ NumT = 50
 #Tmax *= (sixVertex ? 1.0 : 0.5)
 T = range(Tmin, Tmax, length=NumT)
 
-𝒽 = [0] #range(0, 1, length=7)
+𝒽 = [0.0] #range(0, 1, length=7)
 
-num_histories = 5
+num_histories = 15
 therm_runtime = 10000
 runtime = 10000
 t_therm = 5000
 t_autocorr = 100
-N_blocks = 2*floor(Int64, runtime/t_autocorr)
+N_blocks = -1
 t_cutoff = 100
 
 
 # EVALUATION
 κ, C, Diff, M, ℙ, κStd, CStd, DiffStd, MStd, ℙStd = MKuboSimulation(L, PBC, Basis, num_histories, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽);
-
-# +
-#for t in testing
-#    scatter(t[1], t[3], color=:black) # t[2]=h=0 for now
-#end
 # -
-
-now()
 
 colors = jetmap(size(κ, 2));
 
@@ -162,9 +155,6 @@ C_σ = Nothing
 κStd = Nothing 
 C_σStd = Nothing
 
-t3 = now()
-print("\n", canonicalize(t3 - t2))
-
 # ### Diffusive Motion
 
 @everywhere include(dir * "/functions/simulationFunctions/MicroDiffusion.jl")
@@ -177,11 +167,11 @@ Basis = DiamondBasis()
 therm_runtime = 1000
 runtime = 1000
 tau = 2:floor(Int64, 0.75*runtime)
-num_histories = 5
+num_histories = 100
 𝒽 = [0.0] #range(0.0, 2.0, length=7)
 
-T = range(0.01, 10.0, length=20);
-ℓ = []; # floor.(Int64, range(1, prod(L)/4, length=20));
+T = []; # range(0.01, 10.0, length=20);
+ℓ = [1, 1]; # floor.(Int64, range(1, prod(L)/4, length=20));
 
 
 x, δ, Mag, Perc, p, Nv = DiffSim(L, PBC, Basis, therm_runtime, runtime, ℓ, T, 𝒽)
@@ -195,8 +185,12 @@ Mag = mean(Mag, dims=3)
 
 figure()
 for i in eachindex(𝒽)
-    scatter(T, Mag[:,i], color=colors[i])
-    #plot(T, Mfun(T, 𝒽[i]), color=colors[i])
+    if length(T) > 0
+        scatter(T, Mag[:,i], color=colors[i])
+        #plot(T, Mfun(T, 𝒽[i]), color=colors[i])
+    elseif length(ℓ) > 0
+        scatter(ℓ, Mag[:,i], color=colors[i])
+    end
 end
 savefig("figs/Magnetisation.png")
 
@@ -205,8 +199,13 @@ Perc = mean(Perc, dims=3)
 
 figure()
 for i in eachindex(𝒽)
-    scatter(T, Perc[:,i], color=colors[i])
+    if length(T) > 0
+        scatter(T, Perc[:,i], color=colors[i])
+    elseif length(ℓ) > 0
+        scatter(ℓ, Perc[:,i], color=colors[i])
+    end
 end
+
 savefig("figs/Percolation.png")
 # -
 
@@ -299,7 +298,5 @@ elseif length(ℓ) > 0
 end
 savefig("figs/Diffusion Exponent.png")
 
-t4 = now()
-print("\n", canonicalize(t4 - t3))
-
-print("\nTOTAL RUNTIME = ", canonicalize(t4 - t0))
+tend = now()
+print("\nTOTAL RUNTIME = ", canonicalize(tend - t0))

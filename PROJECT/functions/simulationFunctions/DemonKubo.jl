@@ -117,10 +117,10 @@ end
     #t_autocorr = IntAutocorrTime([D, E, J[1,:]])
     
     # -- 1. Temperature --
-    T_μ, T_s = MyBootstrap([D], Tfun, t_autocorr, N_blocks)
+    T_μ, T_s = Estimator(Bootstrap, [D], Tfun, t_autocorr, N_blocks)
     
     # -- 2. Heat Capacity --
-    C_μ, C_s = MyBootstrap([D, E], Cfun, t_autocorr, N_blocks)
+    C_μ, C_s = Estimator(Bootstrap, [D, E], Cfun, t_autocorr, N_blocks)
     
     # -- 3. Thermal Conductivity and Diffusivity--
     statistic = zeros(Float64, tmax)
@@ -129,8 +129,8 @@ end
             statistic[t] += (τ==0 ? 0.5 : 1.0) * J[1,t] * J[1,t+τ] / (tmax-τ)
         end
     end
-    κ_μ, κ_s = MyBootstrap([D, statistic], κfun, t_autocorr, N_blocks)
-    D_μ, D_s = MyBootstrap([D, E, statistic], Dfun, t_autocorr, N_blocks)
+    κ_μ, κ_s = Estimator(Bootstrap, [D, statistic], κfun, t_autocorr, N_blocks)
+    D_μ, D_s = Estimator(Bootstrap, [D, E, statistic], Dfun, t_autocorr, N_blocks)
     
     return [T_μ κ_μ C_μ D_μ; T_s^2 κ_s^2 C_s^2 D_s^2]
 end
@@ -145,11 +145,11 @@ end
 #    statistic = (τ==0 ? 0.5 : 1.0) .* J[1,:] .* circshift(J[1,:], -τ)
 #    statistic /= length(statistic)
 #    
-#    tmp1, tmp2 = MyBootstrap([D[1:end-τ], statistic[1:end-τ]], κfun, t_autocorr, N_blocks)
+#    tmp1, tmp2 = Estimator(Bootstrap, [D[1:end-τ], statistic[1:end-τ]], κfun, t_autocorr, N_blocks)
 #    κ_μ += tmp1
 #    κ_s += tmp2
 #    
-#    tmp1, tmp2 = MyBootstrap([D[1:end-τ], E[1:end-τ], statistic[1:end-τ]], Dfun, t_autocorr, N_blocks)
+#    tmp1, tmp2 = Estimator(Bootstrap, [D[1:end-τ], E[1:end-τ], statistic[1:end-τ]], Dfun, t_autocorr, N_blocks)
 #    D_μ += tmp1
 #    D_s += tmp2
 #end
@@ -185,7 +185,7 @@ function DKuboSimulation(L, PBC, Basis, num_histories, runtime, t_therm, t_autoc
         
         tmp[:,:,n,h] = results[k]
     end
-    tmp = sum(tmp, dims=5)
+    tmp = sum(tmp, dims=4)
     
     # average over observables for all histories - okay b/c iid random variables
     tmp[2,:,:] = sqrt.(tmp[2,:,:])
