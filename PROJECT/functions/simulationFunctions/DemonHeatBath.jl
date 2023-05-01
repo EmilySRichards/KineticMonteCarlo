@@ -16,7 +16,7 @@
 
 # ### Set up the geometry
 
-@everywhere function BathSetup(vertices, edges, Lx, W)
+@everywhere function BathSetup(vertices, edges, Nx, Lx, W)
     Bh_j = []
     Bc_j = []
     
@@ -47,18 +47,19 @@
     
     # STRIP SETUP
     # set up strips for averaging over to find T(x)
-    strips = [[[], []] for n in 1:Lx]
-    
+    strips = [[[], []] for n in 1:Nx]
+    # strip "positions" are at x=(n-1)*Lx/Nx
+       
     #vertices
     for j in eachindex(vertices)
-        x = vertices[j].x[1] # + 0.5 # + 0.5 needed so as not to include some bath edges in the rightmost strip
+        x = 1 + vertices[j].x[1] * Nx/Lx
         n = floor(Int, x)
         push!(strips[n][1], j)
     end
     
     # edges
     for α in eachindex(edges)
-        x = edges[α].x[1] # + 0.5 # + 0.5 needed so as not to include some bath edges in the rightmost strip
+        x = 1 + edges[α].x[1] * Nx/Lx
         n = floor(Int, x)
         push!(strips[n][2], α)
     end
@@ -68,11 +69,11 @@ end
 
 # ### Canonical Thermalisation Routine
 
-@everywhere function CanonBath(vertices, edges, therm_runtime, B_α, T)
+@everywhere function CanonBath(vertices, edges, therm_runtime, B_α, T, 𝒽)
     for t in 1:therm_runtime
         for n in eachindex(B_α)
             β = B_α[rand(eachindex(B_α))]
-            ΔE = ΔE_flip(vertices, edges, β, 0)
+            ΔE = ΔE_flip(vertices, edges, β, 𝒽)
 
             if ΔE <= 0 || rand(Uniform(0,1)) < exp(-ΔE/T)
                 edges[β].σ = !edges[β].σ
@@ -83,7 +84,7 @@ end
 
 # ### Demon dynamics routine 
 
-@everywhere function DemonBath(vertices, edges, runtime, Th, Tc, Bh_α, Bc_α)
+@everywhere function DemonBath(vertices, edges, runtime, Th, Tc, Bh_α, Bc_α, 𝒽)
     
     ΔEh =  zeros(runtime)
     ΔEc =  zeros(runtime)
@@ -97,7 +98,7 @@ end
         D[:,t+1] = D[:,t]
         for _ in edges
             β = rand(eachindex(edges))
-            ΔE = ΔE_flip(vertices, edges, β, 0)
+            ΔE = ΔE_flip(vertices, edges, β, 𝒽)
             
             if β in Bh_α # if edge lies in the hot bath...
                 if ΔE <= 0 || rand(Uniform(0,1)) < exp(-ΔE/Th)
@@ -105,14 +106,14 @@ end
                     
                     ΔEh[t] += ΔE
                 end
-
+                
             elseif β in Bc_α # if edge lies in the cold bath...
                 if ΔE <= 0 || rand(Uniform(0,1)) < exp(-ΔE/Tc)
                     edges[β].σ = !edges[β].σ
                     
                     ΔEc[t] += ΔE
                 end
-
+                
             else # otherwise...
                 if edges[β].D >= ΔE
                     edges[β].σ = !edges[β].σ
@@ -127,18 +128,102 @@ end
     return ΔEh, ΔEc, D[:,2:end] # cut off start point for consistency
 end
 
+# ### Spin-swap demon dynamics routine 
+
+@everywhere function DemonBath_2flip(vertices, edges, runtime, Th, Tc, Bh_α, Bc_α, 𝒽)
+    
+    ΔEh =  zeros(runtime)
+    ΔEc =  zeros(runtime)
+    
+    D = zeros(length(edges), runtime+1)
+    for α in eachindex(edges) # set initial demon energy
+        D[α,1] = edges[α].D
+    end
+    
+    for t in 1:runtime
+        D[:,t+1] = D[:,t]
+        for _ in vertices
+            # propose flips
+            i = rand(eachindex(vertices)) # shared vertex
+            𝜷 = sample(vertices[i].δ, 2; replace=true) # two nearest-neighbour spins to flip (in order)
+            
+            𝒊 = [edges[𝜷[n]].∂[findfirst(edges[𝜷[n]].∂ .!= i)] for n in 1:2] # outer vertices (but may still coincide)
+            
+            # calculate overall energy change and current density between the two unshared vertices
+            ΔE = ΔE_2flip(vertices, edges, 𝜷, 𝒊, i, 𝒽)
+            
+            if β in Bh_α # if edge lies in the hot bath...
+                if ΔE <= 0 || rand(Uniform(0,1)) < exp(-ΔE/Th)
+                    edges[𝜷[1]].σ = !edges[𝜷[1]].σ
+                    edges[𝜷[2]].σ = !edges[𝜷[2]].σ
+                    
+                    ΔEh[t] += ΔE
+                end
+
+            elseif β in Bc_α # if edge lies in the cold bath...
+                if ΔE <= 0 || rand(Uniform(0,1)) < exp(-ΔE/Tc)
+                    edges[𝜷[1]].σ = !edges[𝜷[1]].σ
+                    edges[𝜷[2]].σ = !edges[𝜷[2]].σ
+                    
+                    ΔEc[t] += ΔE
+                end
+
+            else # otherwise...
+                if edges[𝜷[1]].D >= ΔE/2 && edges[𝜷[2]].D >= ΔE/2 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ
+                    edges[𝜷[1]].σ = !edges[𝜷[1]].σ
+                    edges[𝜷[2]].σ = !edges[𝜷[2]].σ
+                    
+                    edges[𝜷[1]].D -= ΔE/2
+                    edges[𝜷[2]].D -= ΔE/2
+                    
+                    D[𝜷[1],t+1] -= ΔE/2
+                    D[𝜷[2],t+1] -= ΔE/2
+                end
+            end
+        end
+    end
+    
+    return ΔEh, ΔEc, D[:,2:end] # cut off start point for consistency
+end
+
 # ### Single Simulation Run
 
-@everywhere function BathSingle(vertices, edges, Area, Tc, Th, Bh_α, Bc_α, strips, therm_runtime, runtime, t_therm, t_autocorr, N_blocks)
+@everywhere function BathSingle(vertices, edges, Area, Tc, Th, Bh_α, Bc_α, strips, therm_runtime, runtime, t_therm, t_autocorr, N_blocks, 𝒽)
+    
+    # -- -1. Define Observables --
+    g = 2*𝒽 - δE*ceil(2*𝒽/δE)
+    
+    Dfun = (T) -> δE/(exp(δE/T)-1) - g/(exp(-g/T)+1)
+    Tfun = (D) -> (𝒽==0) ? δE/log(1.0 + δE/mean(D)) : find_zero((T) -> sign(T)*Dfun(abs(T)) - mean(D), (-2*Th, 2*Th))
+    
+    Jfun = (ΔEc, ΔEh) -> mean((ΔEc-ΔEh)/2/Area) # dividing by Area relies on baths having same number of edges!
+    κfun = (ΔEc, ΔEh, Dl, Dr) -> -2*Δx * Jfun(ΔEc, ΔEh) / (Tfun(Dr) - Tfun(Dl))
+    
+    CDfun = (N, D) -> N * ((δE/Tfun(D))^2 * exp(δE/Tfun(D))/(exp(δE/Tfun(D))-1)^2 + (g/Tfun(D))^2 * exp(g/Tfun(D))/(exp(g/Tfun(D))+1)^2)
+    Cfun = (N, D, E) -> CDfun(N, D) * Var(E) /(CDfun(N, D)*Tfun(D)^2 - Var(E)) / N
     
     # -- 0. Run Simulation --
     
     # thermalise hot & cold baths to right temperature
-    CanonBath(vertices, edges, therm_runtime, Bh_α, Th)
-    CanonBath(vertices, edges, therm_runtime, Bc_α, Tc)
-
-    # run simulation for whole system
-    ΔEh, ΔEc, D = DemonBath(vertices, edges, runtime, Th, Tc, Bh_α, Bc_α)
+    CanonBath(vertices, edges, therm_runtime, Bh_α, Th, 𝒽)
+    CanonBath(vertices, edges, therm_runtime, Bc_α, Tc, 𝒽)
+    
+    ΔEh, ΔEc, D = DemonBath(vertices, edges, runtime, Th, Tc, Bh_α, Bc_α, 𝒽)
+    
+    #𝒽 = twoFlip ? 1 : 0
+    #
+    ## thermalise hot & cold baths to right temperature
+    #CanonBath(vertices, edges, therm_runtime, Bh_α, Th, 𝒽)
+    #CanonBath(vertices, edges, therm_runtime, Bc_α, Tc, 𝒽)
+    #
+    ## run simulation for whole system
+    #if twoFlip
+    #    ΔEh, ΔEc, D = DemonBath_2flip(vertices, edges, runtime, Th, Tc, Bh_α, Bc_α, 𝒽)
+    #else
+    #    ΔEh, ΔEc, D = DemonBath(vertices, edges, runtime, Th, Tc, Bh_α, Bc_α)
+    #end
+    #
+    #δE0 = twoFlip ? δE/2 : δE
     
     # cut out thermalisation time
     ΔEh = ΔEh[t_therm+1:end]
@@ -156,9 +241,9 @@ end
         tot_D_x = zeros(size(D, 2))
         for α in strips[x][2]
             if α in Bc_α
-                totD[x,:] .+= δE/(exp(δE/Tc)-1)
+                totD[x,:] .+= Dfun(Tc)
             elseif α in Bh_α
-                totD[x,:] .+= δE/(exp(δE/Th)-1)
+                totD[x,:] .+= Dfun(Th)
             else
                 totD[x,:] += D[α,:]
             end
@@ -166,15 +251,8 @@ end
     end
     avgD = totD ./ NumSpins
     
-    
     # Functions
     Δx = 1 # FOR NOW FINE BUT WILL DEPEND HOW STRIPS ARE DEFINED IN GENERAL
-
-    Jfun = (ΔEc, ΔEh) -> mean((ΔEc-ΔEh)/2/Area) # dividing by Area relies on baths having same number of edges!
-    Dfun = (T) -> δE/(exp(δE/T)-1)
-    Tfun = (D) -> δE/log(1.0 + δE/mean(D))
-    κfun = (ΔEc, ΔEh, Dl, Dr) -> -2*Δx * Jfun(ΔEc, ΔEh) / (Tfun(Dr) - Tfun(Dl))
-    
     
     T_μ = zeros(length(strips))
     T_σ = zeros(length(strips))
@@ -184,11 +262,10 @@ end
     κ_σ = zeros(length(strips))
     
     for x in 2:length(strips)-1
-        CDfun = (D) -> NumSpins[x] * (δE/Tfun(D))^2 * exp(δE/Tfun(D))/(exp(δE/Tfun(D))-1)^2
-        Cfun = (D, E) -> CDfun(D) * Var(E) /(CDfun(D)*Tfun(D)^2 - Var(E)) / NumSpins[x] # THIS ALSO NEEDS TO BE CHANGED FOR 
+        Cfunx = (D, E) -> Cfun(NumSpins[x], D, E)
         
         T_μ[x], T_σ[x] = Estimator(Bootstrap, [avgD[x,:]], Tfun, t_autocorr, N_blocks)
-        C_μ[x], C_σ[x] = Estimator(Bootstrap, [avgD[x,:], totD[x,:]], Cfun,  t_autocorr, N_blocks)
+        C_μ[x], C_σ[x] = Estimator(Bootstrap, [avgD[x,:], totD[x,:]], Cfunx,  t_autocorr, N_blocks)
         κ_μ[x], κ_σ[x] = Estimator(Bootstrap, [ΔEc, ΔEh, avgD[x-1,:], avgD[x+1,:]], κfun, t_autocorr, N_blocks)
     end
     
@@ -202,14 +279,14 @@ end
 
 # ### Overall simulation routine
 
-function BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, runtime, t_therm, t_autocorr, N_blocks)
+function BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, runtime, t_therm, t_autocorr, N_blocks, 𝒽)
     
     # set up graph and demarcate baths and strips
-    vertices, edges = LatticeGrid(L, PBC, Basis);
-    Lx = L[1] # length of sample
-    Area = prod(L[2:end]) # cross-sectional area of sample
+    vertices, edges, Scale = LatticeGrid(L, PBC, Basis);
+    Lx = L[1]*Scale[1] # length of sample
+    Area = prod(L[2:end])*prod(Scale[2:end]) # cross-sectional area of sample
     
-    Bh_j, Bc_j, Bh_α, Bc_α, strips = BathSetup(vertices, edges, L[1], W)
+    Bh_j, Bc_j, Bh_α, Bc_α, strips = BathSetup(vertices, edges, L[1], Lx, W)
     
     # initialise spins in ground state
     if λ == 0
@@ -219,9 +296,9 @@ function BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, 
     end
     
     
-    ks = range(1,2*num_histories)
+    ks = range(1,2*length(𝒽)*num_histories)
     Hs = [num_histories for k=ks]
-    args = [[deepcopy(vertices), deepcopy(edges), Area, Tc, Th, Bh_α, Bc_α, strips, therm_runtime, runtime, t_therm, t_autocorr, N_blocks] for k=ks]
+    args = [[deepcopy(vertices), deepcopy(edges), Area, Tc, Th, Bh_α, Bc_α, strips, therm_runtime, runtime, t_therm, t_autocorr, N_blocks, 𝒽[rem(div(k-1,num_histories), length(𝒽))+1]] for k=ks]
     
     function hfun(k, H, args)
         n = div(k-1,H) + 1 # unif/rand index
@@ -244,17 +321,18 @@ function BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, 
         end
     end 
         
-    tmp = zeros(2, 3, 2, length(strips)-2, num_histories) # estimates for T,κ,C
+    tmp = zeros(2, 3, 2, length(strips)-2, length(𝒽), num_histories) # estimates for T,κ,C
     for k in ks
-        n,h = divrem(k-1,num_histories) .+ (1,1)
+        ni,h = divrem(k-1,num_histories) .+ (1,1)
+        n,i = divrem(ni-1,length(𝒽)) .+ (1,1)
         
-        tmp[:,:,n,:,h] = results[k]
+        tmp[:,:,n,:,i,h] = results[k]
     end
-    tmp = sum(tmp, dims=5)
+    tmp = sum(tmp, dims=6)
     
     # average over observables for all histories - okay b/c iid random variables
-    tmp[2,:,:,:] = sqrt.(tmp[2,:,:,:])
+    tmp[2,:,:,:,:] = sqrt.(tmp[2,:,:,:,:])
     tmp ./= num_histories
         
-    return tmp[1,1,:,:], tmp[1,2,:,:], tmp[1,3,:,:], tmp[2,1,:,:], tmp[2,2,:,:], tmp[2,3,:,:]
+    return tmp[1,1,:,:,:], tmp[1,2,:,:,:], tmp[1,3,:,:,:], tmp[2,1,:,:,:], tmp[2,2,:,:,:], tmp[2,3,:,:,:]
 end

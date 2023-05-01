@@ -137,7 +137,8 @@ end
     for t in 1:runtime
         xs[:,:,t+1] = xs[:,:,t]
         
-        for _ in 1:floor(Int64, length(edges)/2)
+        for _ in vertices
+            
             # propose flips
             i = rand(eachindex(vertices)) # shared vertex
             𝜷 = sample(vertices[i].δ, 2; replace=false) # two nearest-neighbour spins to flip (in order)
@@ -146,9 +147,8 @@ end
             
             ΣA = A(edges, vertices[i]) + A(edges, vertices[𝒊[1]]) + A(edges, vertices[𝒊[2]])
             
-            # calculate overall energy change and current density between the two unshared vertices
+            # calculate overall energy change
             ΔE = ΔE_2flip(vertices, edges, 𝜷, 𝒊, i, 𝒽)
-            Δj = Δj_2flip(vertices, edges, 𝜷, 𝒊, 𝒽)
 
             # decide whether to accept and perform the move
             #if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ && ΣA>0 # energy AND magnetisation conserved AND no pair diffusion moves (i.e. no particle at central site i)
@@ -180,11 +180,11 @@ end
                 
                 if n1!=nothing     # j1 = js[n1] = excitation
                     js[n1] = 𝒊[2]
-                    xs[:,n1,t+1] += Δ
+                    xs[:,n1,t+1] += Δ # = vertices[𝒊[2]].x
                     δs[:,n1,t] += Δ
                 elseif n2!=nothing # j2 = js[n2] = excitation
                     js[n2] = 𝒊[1]
-                    xs[:,n2,t+1] -= Δ
+                    xs[:,n2,t+1] -= Δ # = vertices[𝒊[1]].x
                     δs[:,n2,t] -= Δ
                 end
             end
@@ -310,10 +310,14 @@ end
 
 # ### Overall diffusion routine
 
+@everywhere function mpfun1(args)
+    return DiffSimSingle(args...)
+end
+
 @everywhere function DiffSim(L, PBC, Basis, therm_runtime, runtime, ℓ, T, 𝒽)
     
     # set up lattice
-    vertices, edges = LatticeGrid(L, PBC, Basis);
+    vertices, edges, scale = LatticeGrid(L, PBC, Basis);
     
     useT = length(T)>0
     if !useT
@@ -327,10 +331,6 @@ end
         args = [[deepcopy(vertices), deepcopy(edges), therm_runtime, runtime, useT, T[rem(n-1,M)+1], 𝒽[rem(div(n-1,M),length(𝒽))+1]] for n in ns]
     else
         args = [[deepcopy(vertices), deepcopy(edges), therm_runtime, runtime, useT, ℓ[rem(n-1,M)+1], 𝒽[rem(div(n-1,M),length(𝒽))+1]] for n in ns]
-    end
-
-    @everywhere function mpfun1(args)
-        return DiffSimSingle(args...)
     end
 
     if multiProcess
@@ -424,6 +424,10 @@ end
 
 # ### Overall analysis routine
 
+@everywhere function mpfun2(args)
+    return DiffAnalysisSingle(args...)
+end
+
 @everywhere function DiffAnalysis(x, δ, p, runtime, ℓ, T, 𝒽)
     
     useT = length(T)>0
@@ -438,10 +442,6 @@ end
     for n in ns
         i,t = divrem(n-1,M) .+ (1,1)
         push!(args, [p[t,i,:], x[t][i], δ[t][i], tau])
-    end
-
-    @everywhere function mpfun2(args)
-        return DiffAnalysisSingle(args...)
     end
 
 

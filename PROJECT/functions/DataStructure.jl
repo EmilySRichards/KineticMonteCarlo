@@ -43,7 +43,7 @@ end
 
 @everywhere function LatticeGrid(L, PBC, Basis)
     
-    Vs0, Es0, Bonds = Basis
+    Vs0, Es0, Bonds, Scale = Basis
     nv = length(Vs0)
     ne = length(Es0)
     
@@ -75,8 +75,9 @@ end
 
     
     # place down all unit cells without connecting dangling edges
+    x0 = ones(length(L)) # origin for 1-indexing positions as done in X (just for convenience because Julia)
     for I in 1:N
-        X = I_to_X(I, L)
+        X = I_to_X(I, L) - x0 # don't forget to subtract the origin!
         Vs, Es = CreateCell(Vs0, Es0, I, X)
         
         vertices[nv*(I-1)+1:nv*I] .= Vs
@@ -140,6 +141,11 @@ end
         end
     end
     
+    # rescale vertex positions
+    for v in vertices
+        v.x = v.x .* Scale
+    end
+    
     # calculate edge positions from vertex positions
     for e in edges
         e.x = zeros(length(L))
@@ -149,7 +155,7 @@ end
         e.x ./= length(e.∂)
     end
     
-    return vertices, edges
+    return vertices, edges, Scale
 end
 
 # ### Different Unit Cells
@@ -172,7 +178,35 @@ end
         push!(Bev, [(d, 1), dir])
     end
     
-    return (Vs, Es, Bev)
+    Scale = ones(dim) # scale of the unit cell dimensions
+    
+    return Vs, Es, Bev, Scale
+end
+
+function HexBasis()
+    Nv = 4
+    Ne = 6
+    
+    Vs = [Cell(false, 0, [], [], []) for j in 1:Nv]
+    Es = [Cell(false, 0, [], [], []) for α in 1:Ne]
+    
+    Vs[1].x = [0  , 0  ]
+    Vs[2].x = [1/6, 1/2]
+    Vs[3].x = [1/2, 1/2]
+    Vs[4].x = [2/3, 0  ]
+    
+    tmp = [(1, 1), (1, 2), (2, 2), (3, 2), (3, 3), (4, 3), (5, 3), (5, 4), (6, 4)] # list of links (edge then vertex)
+    
+    for t in tmp
+        push!(Es[t[1]].∂, t[2])
+        push!(Vs[t[2]].δ, t[1])
+    end
+    
+    Bev = [[(6, 1), [1 0]], [(2, 1), [0 1]], [(4, 4), [0 1]]] # dangling edge -> vertex bonds
+    
+    Scale = [3, sqrt(3)] # scale of the unit cell dimensions (such that bond length = 1)
+    
+    return Vs, Es, Bev, Scale
 end
 
 @everywhere function DiamondBasis()
@@ -201,7 +235,9 @@ end
     
     Bev = [[(8, 1), [1 1 0]], [(9, 5), [1 0 0]], [(10, 4), [0 1 0]], [(11, 5), [1 0 0]], [(12, 1), [1 0 1]], [(13, 3), [0 0 1]], [(14, 4), [0 1 0]], [(15, 3), [0 0 1]], [(16, 1), [0 1 1]]] # dangling edge -> matching vertex
     
-    return (Vs, Es, Bev)
+    Scale = ones(3) .* 4/sqrt(3) # scale of the unit cell dimensions (such that bond lengths=1)
+    
+    return Vs, Es, Bev, Scale
 end
 
 # ### Useful Functions
@@ -233,34 +269,59 @@ function RemoveEdges(vertices, edges, αs)
     end
 end
 
+# ### Handy Graph Tools
+
 # ### Interface with Graphs.jl package
 
-# + active=""
 # using Graphs, MetaGraphs, Plots, GraphRecipes
 
-# + active=""
-# function LatticeToGraph(vertices, edges)
-#     # converts my custom data structure of vertices and edges to a structure matching the Graphs package
-#     
-#     elist = []
-#     for edge in edges
-#         push!(elist, Tuple(edge.∂))
-#     end
-#     
-#     G = SimpleGraph(Graphs.SimpleEdge.(elist));
-#     
-#     #G = MetaGraph(G)
-#     #for i in eachindex(vertices)
-#     #    set_prop!(G, i, :x, vertices[i].x)
-#     #end
-#     #for edge in edges
-#     #    set_prop!(G, Edge(edge.∂...), :x, edge.x)
-#     #    set_prop!(G, Edge(edge.∂...), :σ, edge.σ)
-#     #    set_prop!(G, Edge(edge.∂...), :D, edge.D)
-#     #end
-#     
-#     return G
-# end
+#function LatticeToGraph(vertices, edges)
+#    # converts my custom data structure of vertices and edges to a structure matching the Graphs package
+#
+#    elist = []
+#    for edge in edges
+#        push!(elist, Tuple(edge.∂))
+#    end
+#
+#    G = SimpleGraph(Graphs.SimpleEdge.(elist));
+#
+#    #G = MetaGraph(G)
+#    #for i in eachindex(vertices)
+#    #    set_prop!(G, i, :x, vertices[i].x)
+#    #end
+#    #for edge in edges
+#    #    set_prop!(G, Edge(edge.∂...), :x, edge.x)
+#    #    set_prop!(G, Edge(edge.∂...), :σ, edge.σ)
+#    #    set_prop!(G, Edge(edge.∂...), :D, edge.D)
+#    #end     
+#
+#    return G
+#end
 
-# + active=""
+
+#function GraphToLattice(G)
+#    # converts a Graphs package graph to our data structure
+#    
+#    vertices = [Cell(false, 0, [], [], []) for i in 1:nv(G)] # list of vertices
+#    edges = [Cell(false, 0, [], [], []) for α in 1:ne(G)] # list of edges
+#    
+#    for i in eachindex(vertices)
+#        vertices[i].δ = neighbors(G, i)
+#    end
+#    
+#    Gedges = edges(G)
+#    
+#    α = 1
+#    for i in eachindex(vertices)
+#        for j < i
+#            if has_edge(i, j)
+#                append!(edges[α].∂, [i, j])
+#                α += 1
+#            end
+#        end
+#    end
+#    
+#    return vertices, edges
+#end
+
 # Can then freely use e.g. ``graphplot(G, curves=false)``

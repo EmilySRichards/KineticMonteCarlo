@@ -76,16 +76,20 @@ end
     if 𝜷[1] == 𝜷[2]
         return 0
     end
-    𝐯 = [vertices[𝒊[1]], vertices[𝒊[1]]]
+    𝐯 = [vertices[𝒊[1]], vertices[𝒊[2]]]
     v = vertices[i]
     𝛔 = [(-1)^edges[𝜷[1]].σ, (-1)^edges[𝜷[2]].σ]
     
-    return 2*λ*(A(edges, 𝐯[1]) + A(edges, 𝐯[2])) - 4*ξ*(𝛔[1]*Q(edges, 𝐯[1]) + 𝛔[2]*Q(edges, 𝐯[2]) - 2) + (2*𝒽 - 4*ξ*Q(edges, v))*(𝛔[1] + 𝛔[2]) 
+    return 2*λ*(A(edges, 𝐯[1]) + A(edges, 𝐯[2])) - 4*ξ*(𝛔[1]*Q(edges, 𝐯[1]) + 𝛔[2]*Q(edges, 𝐯[2]) - 2) + (2*𝒽 - 4*ξ*Q(edges, v) - 8*ξ*𝛔[1])*(𝛔[1] + 𝛔[2]) 
 end
 
 @everywhere function Δj_2flip(vertices, edges, 𝜷, 𝒊, 𝒽) # current flow from 𝒊[1] to 𝒊[2] via 𝜷[1] then 𝜷[2]
-    𝐯 = [vertices[𝒊[1]], vertices[𝒊[1]]]
+    𝐯 = [vertices[𝒊[1]], vertices[𝒊[2]]]
     𝛔 = [(-1)^edges[𝜷[1]].σ, (-1)^edges[𝜷[2]].σ]
     
-    return (A(edges, 𝐯[1]) - A(edges, 𝐯[2])) - 2*ξ*(𝛔[2]*Q(edges, 𝐯[2]) - 𝛔[1]*Q(edges, 𝐯[1])) + 0.5*𝒽*((-1)^edges[𝜷[2]].σ - (-1)^edges[𝜷[1]].σ)
+    if ξ == 0
+        return λ*(A(edges, 𝐯[1]) - A(edges, 𝐯[2])) + 0.5*𝒽*((-1)^edges[𝜷[2]].σ - (-1)^edges[𝜷[1]].σ)
+    end
+    
+    return λ*(A(edges, 𝐯[2]) - A(edges, 𝐯[1])) - 2*ξ*(𝛔[2]*Q(edges, 𝐯[2]) - 𝛔[1]*Q(edges, 𝐯[1])) + 0.5*𝒽*((-1)^edges[𝜷[2]].σ - (-1)^edges[𝜷[1]].σ)
 end

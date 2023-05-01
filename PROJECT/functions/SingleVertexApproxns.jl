@@ -17,9 +17,9 @@
 # ### Partition Function
 
 function PartitionFunction(T, 𝒽)
-    Z  = 6 * exp( λ / T)
-    Z += 2 * exp( λ / T) * exp.(-16 * ξ / T) * cosh(4 *  𝒽 / T)
-    Z += 8 * exp(-λ / T) * exp.(- 4 * ξ / T) * cosh(2 *  𝒽 / T)
+    Z  = 6 .* exp( λ ./ T)
+    Z += 2 .* exp.( λ ./ T) .* exp.(-16 .* ξ ./ T) .* cosh.(4 .*  𝒽 ./ T)
+    Z += 8 .* exp.(-λ ./ T) .* exp.(- 4 .* ξ ./ T) .* cosh.(2 .*  𝒽 ./ T)
     
     return  Z
 end
@@ -28,9 +28,9 @@ end
 # ### <A> Single Vertex
 
 function Asv(T, 𝒽)
-    A  = 6 * exp( λ / T)
-    A += 2 * exp( λ / T) * exp(-16 * ξ / T) * cosh(4 *  𝒽 / T)
-    A -= 8 * exp(-λ / T) * exp(- 4 * ξ / T) * cosh(2 *  𝒽 / T)
+    A  = 6 .* exp.( λ ./ T)
+    A += 2 .* exp.( λ ./ T) .* exp.(-16 .* ξ ./ T) .* cosh(4 .*  𝒽 ./ T)
+    A -= 8 .* exp.(-λ ./ T) .* exp.(- 4 .* ξ ./ T) .* cosh(2 .*  𝒽 ./ T)
     
     A /= PartitionFunction(T, 𝒽)
     
@@ -41,8 +41,8 @@ end
 # ### <B> Single Vertex
 
 function Bsv(T, 𝒽)
-    B  = 32 * exp( λ / T) * exp(-16 * ξ / T) * cosh(4 * 𝒽 / T)
-    B -= 32 * exp(-λ / T) * exp(- 4 * ξ / T) * cosh(2 * 𝒽 / T)
+    B  = 32 .* exp.( λ ./ T) .* exp.(-16 .* ξ ./ T) .* cosh.(4 .* 𝒽 ./ T)
+    B -= 32 .* exp.(-λ ./ T) .* exp.(- 4 .* ξ ./ T) .* cosh.(2 .* 𝒽 ./ T)
     
     B /= PartitionFunction(T, 𝒽)
     
@@ -57,7 +57,7 @@ function ExcitationDensity(T, 𝒽)
     A .+= 2 .* exp.( λ ./ T) .* exp.(-16 .* ξ ./ T) .* cosh.(4 .*  𝒽 ./ T)
     A .-= 8 .* exp.(-λ ./ T) .* exp.(- 4 .* ξ ./ T) .* cosh.(2 .*  𝒽 ./ T)
     
-    A ./= PartitionFunction(T, 𝒽)
+    A ./= PartitionFunction.(T, 𝒽)
     
     return  0.5 .* (1 .- A)
 end
@@ -69,7 +69,7 @@ function Magnetisation(T, 𝒽)
     M   =  8 .* exp.( λ ./ T) .* exp.(-16 .* ξ ./ T) .* sinh.(4 .*  𝒽 ./ T)
     M .-= 16 .* exp.(-λ ./ T) .* exp.(- 4 .* ξ ./ T) .* sinh.(2 .*  𝒽 ./ T)
     
-    M ./= 4 .* PartitionFunction(T, 𝒽)
+    M ./= 4 .* PartitionFunction.(T, 𝒽)
     
     return  M
 end

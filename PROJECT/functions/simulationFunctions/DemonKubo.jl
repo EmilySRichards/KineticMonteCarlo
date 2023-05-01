@@ -16,7 +16,11 @@
 
 # ### Set up the geometry
 
-@everywhere function DemonKuboSetup(vertices, edges, T)
+@everywhere function DemonKuboSetup(vertices, edges, T, 𝒽)
+    
+    g = 2*𝒽 - δE*ceil(2*𝒽/δE)
+    
+    Dfun = (T) -> δE/(exp(δE/T)-1) - g/(exp(-g/T)+1)
     
     # REinitialise entire system in ground state
     for edge in edges
@@ -31,28 +35,31 @@
     # calculate total demon energy for given temperature T
     D_tot = (λ == 0) ? 0 : length(vertices)
     for edge in edges
-        D_tot += δE/(exp(δE/T)-1)
+        D_tot += Dfun(T)
     end
     
-    if λ == 0
-        Aavg = 16*(exp(-4*ξ/T)+exp(-16*ξ/T))/(3+4*exp(-4*ξ/T)+exp(-16*ξ/T))
-    else
-        Aavg = tanh(λ/T)
-    end
-    D_tot += length(vertices) * ((λ == 0) ? Aavg : -Aavg)
+    D_tot += length(vertices) * ((λ == 0) ? ξ*Bsv(T, 𝒽) : -λ*Asv(T, 𝒽))
     
     # randomly increment demon energies
-    while D_tot>0 # while loop
-        edge = edges[rand(eachindex(edges))] # pick a random edge
-        ΔD = δE
-        edge.D += ΔD # increment its demon energy by δE
+    idxs = collect(eachindex(edges)) 
+    while D_tot>0 # while loop        
+        hterm = (𝒽==0 || length(idxs)==0) ? false : rand(Bool) # randomly pick increment unit
+        ΔD = hterm ? 2*𝒽 : δE
+        
+        α = rand(idxs) # pick a random (valid) edge
+        
+        edges[α].D += ΔD # increment its demon energy
         D_tot -= ΔD # decrement the total energy left to distribute
+        
+        if hterm # update which edges are valid
+            deleteat!(idxs, findfirst(idxs .== α))
+        end
     end
 end
 
 # ### Demon dynamics routine 
 
-@everywhere function DemonKubo(vertices, edges, runtime)
+@everywhere function DemonKubo(vertices, edges, runtime, 𝒽)
     
     J = zeros(Float64, (length(vertices[1].x), runtime))
     D = zeros(Float64, (runtime))
@@ -62,7 +69,7 @@ end
         E[t+1] = E[t]
         for _ in edges
             β = rand(eachindex(edges))
-            ΔE = ΔE_flip(vertices, edges, β, 0)
+            ΔE = ΔE_flip(vertices, edges, β, 𝒽)
             
             if edges[β].D >= ΔE
                 Δj_β = Δj_flip(vertices, edges, β)
@@ -94,20 +101,25 @@ end
 
 # ### Single Simulation Run
 
-@everywhere function DKuboSingle(vertices, edges, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T)
+@everywhere function DKuboSingle(vertices, edges, scale, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽)
     
-    Dfun = (T) -> δE/(exp(δE/T)-1)
-    Tfun = (D) -> δE/log(1.0 + δE/mean(D))
-    CDfun = (D) -> length(edges) * (δE/Tfun(D))^2 * exp(δE/Tfun(D)) / (exp(δE/Tfun(D))-1)^2
+    # -- -1. Define Observables --
+    g = 2*𝒽 - δE*ceil(2*𝒽/δE)
+    
+    Dfun = (T) -> δE/(exp(δE/T)-1) - g/(exp(-g/T)+1)
+    Tfun = (D) -> (𝒽==0) ? δE/log(1.0 + δE/mean(D)) : find_zero((T) -> sign(T)*Dfun(abs(T)) - mean(D), (-20, 20))
+    
+    CDfun = (D) -> length(edges) * ((δE/Tfun(D))^2 * exp(δE/Tfun(D))/(exp(δE/Tfun(D))-1)^2 + (g/Tfun(D))^2 * exp(g/Tfun(D))/(exp(g/Tfun(D))+1)^2)
     Cfun = (D,E) -> CDfun(D) * Var(E) /(CDfun(D)*Tfun(D)^2 - Var(E)) / length(edges)
+    
     κfun = (D,S) -> sum(S) / Tfun(D)^2 / length(edges)
-    Dfun = (D,E,S) -> κfun(D, S) / Cfun(D, E)
+    Difffun = (D,E,S) -> κfun(D, S) / Cfun(D, E)
     
     tmax = runtime-t_therm
     
     # -- 0. Run Simulation --
-    DemonKuboSetup(vertices, edges, T)
-    J, D, E = DemonKubo(vertices, edges, runtime)
+    DemonKuboSetup(vertices, edges, T, 𝒽)
+    J, D, E = DemonKubo(vertices, edges, runtime, 𝒽)
 
     # cut out thermalisation time
     J = J[:,t_therm+1:end]
@@ -129,8 +141,10 @@ end
             statistic[t] += (τ==0 ? 0.5 : 1.0) * J[1,t] * J[1,t+τ] / (tmax-τ)
         end
     end
+    #statistic .*= prod(scale) # rescaling to correct for scaling of unit cells
+    
     κ_μ, κ_s = Estimator(Bootstrap, [D, statistic], κfun, t_autocorr, N_blocks)
-    D_μ, D_s = Estimator(Bootstrap, [D, E, statistic], Dfun, t_autocorr, N_blocks)
+    D_μ, D_s = Estimator(Bootstrap, [D, E, statistic], Difffun, t_autocorr, N_blocks)
     
     return [T_μ κ_μ C_μ D_μ; T_s^2 κ_s^2 C_s^2 D_s^2]
 end
@@ -157,12 +171,12 @@ end
 
 # ### Overall simulation routine
 
-function DKuboSimulation(L, PBC, Basis, num_histories, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T)
+function DKuboSimulation(L, PBC, Basis, num_histories, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽)
     
-    vertices, edges = LatticeGrid(L, PBC, Basis)
+    vertices, edges, scale = LatticeGrid(L, PBC, Basis)
     
-    ks = range(1,length(T)*num_histories)
-    args = [[deepcopy(vertices), deepcopy(edges), runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T[div(k-1,num_histories)+1]] for k=ks]
+    ks = range(1,length(T)*length(𝒽)*num_histories)
+    args = [[deepcopy(vertices), deepcopy(edges), scale, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T[div(div(k-1,num_histories),length(𝒽))+1], 𝒽[rem(div(k-1,num_histories),length(𝒽))+1]] for k=ks]
     
     function hfun(args)
         return DKuboSingle(args...)
@@ -179,17 +193,18 @@ function DKuboSimulation(L, PBC, Basis, num_histories, runtime, t_therm, t_autoc
     end 
     
     
-    tmp = zeros(2,4,length(T),num_histories) # rows for mean and stdv of T,κ,C
+    tmp = zeros(2, 4, length(T), length(𝒽), num_histories) # rows for mean and stdv of T,κ,C
     for k in ks
-        n,h = divrem(k-1,num_histories) .+ (1,1)
+        ni,h = divrem(k-1,num_histories) .+ (1,1)
+        n,i = divrem(ni-1,length(𝒽)) .+ (1,1)
         
-        tmp[:,:,n,h] = results[k]
+        tmp[:,:,n,i,h] = results[k]
     end
-    tmp = sum(tmp, dims=4)
+    tmp = sum(tmp, dims=5)
     
     # average over observables for all histories - okay b/c iid random variables
-    tmp[2,:,:] = sqrt.(tmp[2,:,:])
+    tmp[2,:,:,:] = sqrt.(tmp[2,:,:,:])
     tmp ./= num_histories
         
-    return tmp[1,1,:], tmp[1,2,:], tmp[1,3,:], tmp[1,4,:], tmp[2,1,:], tmp[2,2,:], tmp[2,3,:], tmp[2,4,:]
+    return tmp[1,1,:,:], tmp[1,2,:,:], tmp[1,3,:,:], tmp[1,4,:,:], tmp[2,1,:,:], tmp[2,2,:,:], tmp[2,3,:,:], tmp[2,4,:,:]
 end

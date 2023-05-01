@@ -29,16 +29,12 @@ t0 = now()
 @everywhere global const ξ::Float64 = 0
 
 # which dynamics to use (only affects microcanonical functions)
-@everywhere global const twoFlip::Bool = true
+@everywhere global const twoFlip::Bool = false
 
 # demon quantisation
-@assert ξ==0 || λ==0 # otherwise demons will break b/c not quantised
+@assert (λ==1 && ξ==0) || (λ==0 && ξ==1) # otherwise demons will break b/c not quantised
 @everywhere global const δE::Int = (λ==0) ? 8*ξ : 4*λ
 # -
-
-# Lx  Ly  nT    t     t_th
-# 50  50  50  50000  10000
-# 25  25  25  10000   2500
 
 # ## Data Structure
 #
@@ -62,12 +58,12 @@ Basis = DiamondBasis()
 
 Tmin = 0.01
 Tmax = 10.0
-NumT = 50
+NumT = 30
 
 #Tmax *= (λ == 0 ? 1.0 : 0.5)
 T = range(Tmin, Tmax, length=NumT)
 
-𝒽 = [0.0] #range(0, 1, length=7)
+𝒽 = [0] #range(0, 1, length=7)
 
 num_histories = 15
 therm_runtime = 10000
@@ -77,12 +73,20 @@ t_autocorr = 100
 N_blocks = -1
 t_cutoff = 100
 
+allComponents = false
 
 # EVALUATION
-κ, C, Diff, M, ℙ, κStd, CStd, DiffStd, MStd, ℙStd = MKuboSimulation(L, PBC, Basis, num_histories, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽);
+κ, C, Diff, M, ℙ, κStd, CStd, DiffStd, MStd, ℙStd = MKuboSimulation(L, PBC, Basis, num_histories, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽, allComponents);
+
+# +
+#for t in testing
+#    scatter(t[1], t[3], color=:black) # t[2]=h=0 for now
+#end
 # -
 
-colors = jetmap(size(κ, 2));
+now()
+
+colors = jetmap(length(𝒽));
 
 # +
 figure()
@@ -102,7 +106,7 @@ end
 
 Mfun0 = (T, h) -> tanh.(h ./ T)
 
-for n in 1:size(κ, 2)
+for n in eachindex(𝒽)
     #plot(T, Mfun0(T, 𝒽[n]), color=colors[n], "--")
     #plot(T, Mfun(T, 𝒽[n]), color=colors[n])
     scatter(T, M[:,n], color=colors[n])
@@ -114,7 +118,7 @@ figure()
 #ℙfunMF = (T, h) -> (1 .- Mfun0(T, h) .^2) ./ 3
 ℙfunLim = (T, h) -> (1 .- Mfun0(T, h) .^2) ./ 4
 
-for n in 1:size(κ, 2)
+for n in eachindex(𝒽)
     #plot(T, ℙfunMF(T, 𝒽[n]), color=colors[n], "--")
     #plot(T, ℙfunLim(T, 𝒽[n]), color=colors[n])
     scatter(T, ℙ[:,n], color=colors[n])
@@ -123,40 +127,53 @@ savefig("figs/Micro_Kubo_Percolation.png")
 
 # +
 figure()
-nfun0 = (T) -> 0.5 .* (1 .- tanh.(1 ./ T))
-nfun = (T, h) -> 1 ./ (1 .+ exp.(2 ./ T) .* exp.(h ./ T ./ sqrt.(nfun0(T))))
+nfun0 = (T) -> 0.5 .* (1 .- tanh.(λ ./ T))
+nfun = (T, h) -> 1 ./ (1 .+ exp.(2 .* λ ./ T) .* exp.(h ./ T ./ sqrt.(nfun0(T))))
 Kfun = (T, h) -> (2 .* nfun(T, h) ./ T.^2) .* (1 .- nfun(T, h)) .* (1 .- Mfun(T, h)) ./ 2 # additional magnetisation factor for +-+- bond percolation
 Kfun0 = (T, h) -> (2 .* nfun0(T) ./ T.^2) .* (1 .- nfun0(T)) .* (1 .- Mfun(T, h)) ./ 2
 
-for n in 1:size(κ, 2)
+dim = allComponents ? length(L) : 1
+
+for n in eachindex(𝒽)
     #plot(T, Kfun(T, 𝒽[n]), color=colors[n], "--")
     #plot(T, Kfun0(T, 𝒽[n]), color=colors[n])
-    plotWithError(κ[:,n], T, colors[n], κStd[:,n])
+
+    for i in 1:dim
+        for j in 1:dim
+            plot(T, κ[i, j, :, n], color=colors[n])
+            #plotWithError(κ[dim1,dim2,:,n], T, colors[n], κStd[dim1,dim2,:,n])
+        end
+    end
 end
+ylim([0, 0.3])
 savefig("figs/Micro_Kubo_Conductivity.png")
 # -
 
 figure()
-Cfun = (T, h) -> (sech.(1 ./T).^2 + 2 * h^2 .* sech.(h ./T).^2) ./ 2 ./ T.^2
-for n in 1:size(κ, 2)
+Cfun = (T, h) -> (sech.(1 ./T).^2 + 2 * h^2 .* sech.(h ./T).^2) ./ 2 .* λ ./ T.^2
+for n in eachindex(𝒽)
     #plot(T, Cfun(T, 𝒽[n]), color=colors[n])
     plotWithError(C[:,n], T, colors[n], CStd[:,n])
 end
+ylim([0, 0.3])
 savefig("figs/Micro_Kubo_Capacity.png")
 
-# +
 figure()
 Dfun = (T, h) -> Kfun(T, h) ./ Cfun(T, h)
 Dfun0  = (T, h) -> Kfun0(T, h) ./ Cfun(T, h)
-for n in 1:size(κ, 2)
+for n in eachindex(𝒽)
     #plot(T, Dfun(T, 𝒽[n]), color=colors[n], "--")
     #plot(T, Dfun0(T, 𝒽[n]), color=colors[n])
-    plotWithError(Diff[:,n], T, colors[n], DiffStd[:,n])
+    
+    for i in 1:dim
+        for j in 1:dim
+            plot(T, Diff[i, j, :, n], color=colors[n])
+            #plotWithError(Diff[dim1,dim2,:,n], T, colors[n], DiffStd[dim1,dim2,:,n])
+        end
+    end
 end
 savefig("figs/Micro_Kubo_Diff.png")
-
-ylim([0,1])
-# -
+ylim([0, 2.0])
 
 κ = Nothing
 C_σ = Nothing
@@ -168,17 +185,17 @@ C_σStd = Nothing
 @everywhere include(dir * "/functions/simulationFunctions/MicroDiffusion.jl")
 
 # +
-L = [10, 10, 10]
+L = [5, 5, 5]
 PBC = [true, true, true]
 Basis = DiamondBasis()
 
 therm_runtime = 1000
 runtime = 1000
 tau = 2:floor(Int64, 0.75*runtime)
-num_histories = 100
+num_histories = 50
 𝒽 = [0.0] #range(0.0, 2.0, length=7)
 
-T = []; # range(0.01, 10.0, length=20);
+T = []; range(0.01, 10.0, length=20);
 ℓ = [1, 1]; # floor.(Int64, range(1, prod(L)/4, length=20));
 
 
@@ -248,7 +265,7 @@ figure() # density of quasiparticles
 p = mean(p, dims=3) ./ Nv
 
 if length(T) > 0
-    nfun0 = (T) -> (1 .- tanh.(1 ./ T)) ./ 2
+    nfun0 = (T) -> (1 .- tanh.(λ ./ T)) ./ 2
     Mfun0 = (T, h) -> tanh.(h ./ T)
     nfun = (T, h) -> nfun0(T .* (1 .- h .* Mfun0(T, h) ./ 2)) # 
     nfun2 = (T, h) -> nfun0(T ./ (1 .+ h .* Mfun0(T, h) ./ 2))
@@ -270,13 +287,13 @@ savefig("figs/Quasiparticle Number.png")
 
 # +
 figure() # diffusion coefficient
-nfun0 = (T) -> (1 .- tanh.(1 ./ T)) ./ 2
-#nfun  = (T, h) -> 1 ./ (1 .+ exp.(2 ./ T) .* exp.(h ./ T ./ sqrt.(nfun0(T))))
+nfun0 = (T) -> (1 .- tanh.(λ ./ T)) ./ 2
+#nfun  = (T, h) -> 1 ./ (1 .+ exp.(2 .* λ ./ T) .* exp.(h ./ T ./ sqrt.(nfun0(T))))
 #Dfun  = (T, h) -> (1 .- nfun(T, h)) .* (1 .- Mfun(T, h)) ./ 2
 DfunPlus = (T, h) -> (1 .- nfun0(T)) .* (1 .+ Mfun(T, h)) ./ 2
 DfunMinus = (T, h) -> (1 .- nfun0(T)) .* (1 .- Mfun(T, h)) ./ 2
 
-#nfun = (T) -> λ == 0 ? 4 .* (exp.(-4 ./ T) .+ exp.(-16 ./ T)) ./ (3 .+ 4 .* exp.(-4 ./ T) .+ exp.(-16 ./ T)) : 0.5 .* (1 .- tanh.(1 ./ T))
+#nfun = (T) -> λ == 0 ? 4 .* (exp.(-4 ./ T) .+ exp.(-16 ./ T)) ./ (3 .+ 4 .* exp.(-4 ./ T) .+ exp.(-16 ./ T)) : 0.5 .* (1 .- tanh.(λ ./ T))
 #Dfun = (n) -> λ == 0 ? 7/12 .* (1 .- n) : 1 .* (1 .- n)
 
 if length(T) > 0
@@ -306,5 +323,6 @@ elseif length(ℓ) > 0
 end
 savefig("figs/Diffusion Exponent.png")
 
-tend = now()
-print("\nTOTAL RUNTIME = ", canonicalize(tend - t0))
+
+t4 = now()
+print("\nTOTAL RUNTIME = ", canonicalize(t4 - t0))
