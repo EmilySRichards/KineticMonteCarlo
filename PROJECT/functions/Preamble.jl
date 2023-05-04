@@ -27,11 +27,11 @@ if multiProcess
     
     @everywhere using Pkg
     @everywhere Pkg.activate(dir)
-    @everywhere using Distributed, StatsBase, Statistics, Distributions, Roots, PyPlot, LsqFit, Dates, ForwardDiff
+    @everywhere using Distributed, StatsBase, Statistics, Distributions, Roots, PyPlot, LsqFit, Dates, ForwardDiff, Combinatorics
 else
     print(Threads.nthreads())
     
-    using StatsBase, Statistics, Distributions, Roots, PyPlot, LsqFit, Dates, ForwardDiff
+    using StatsBase, Statistics, Distributions, Roots, PyPlot, LsqFit, Dates, ForwardDiff, Combinatorics
 end
 
 using Colors, PlotUtils

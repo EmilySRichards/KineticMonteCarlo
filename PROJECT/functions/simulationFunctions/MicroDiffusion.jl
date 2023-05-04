@@ -63,7 +63,10 @@ end
     # find all the excitations
     js = []
     for j in eachindex(vertices)
-        if (λ == 0 ? B(edges, vertices[j]) == 4 : A(edges, vertices[j]) == -1) # in 6-vertex case, A_e = 2^2 = 4, A_2e = 4^2 = 16
+        Aj = A(edges, vertices[j])
+        Qj = abs(Q(edges, vertices[j]))
+        
+        if (λ == 0 ? (Qj == 1 || Qj == 2) : Aj == -1) # in 6-vertex case, A_e = 2^2 = 4, A_2e = 4^2 = 16
             push!(js, j)
         end
     end

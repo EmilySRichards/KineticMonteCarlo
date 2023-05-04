@@ -25,8 +25,8 @@ t0 = now()
 
 # +
 # Hamiltonian constants
-@everywhere global const λ::Float64 = 1
-@everywhere global const ξ::Float64 = 0
+@everywhere global const λ::Float64 = 0
+@everywhere global const ξ::Float64 = 1
 
 # which dynamics to use (only affects microcanonical functions)
 @everywhere global const twoFlip::Bool = false
@@ -40,10 +40,44 @@ t0 = now()
 #
 
 @everywhere include(dir * "/functions/DataStructure.jl")
+@everywhere include(dir * "/functions/Bases.jl")
 @everywhere include(dir * "/functions/Plotting.jl")
 @everywhere include(dir * "/functions/Statistics.jl")
 @everywhere include(dir * "/functions/Simulation.jl")
 @everywhere include(dir * "/functions/SingleVertexApproxns.jl")
+
+# +
+vertices, edges = LatticeGrid([2, 2, 2], [false, false, false], DiamondBasis())
+
+Lvertices, Ledges = LineGraph(vertices, edges);
+
+# +
+f = figure()
+for e in edges
+    r1 = vertices[e.∂[1]].x
+    r2 = vertices[e.∂[2]].x
+
+    plot3D([r1[1]; r2[1]], [r1[2]; r2[2]], [r1[3]; r2[3]], color=:black, zorder=1) 
+end
+
+for v in vertices
+   scatter3D(v.x[1], v.x[2], v.x[3], color=:black, zorder=2) # color=(A(edges,v)<0 ? :yellow : :black)  
+end
+
+for e in Ledges
+    r1 = Lvertices[e.∂[1]].x
+    r2 = Lvertices[e.∂[2]].x
+
+    plot3D([r1[1]; r2[1]], [r1[2]; r2[2]], [r1[3]; r2[3]], color=:grey, zorder=1) 
+end
+
+for v in Lvertices
+   scatter3D(v.x[1], v.x[2], v.x[3], color=(v.σ ? :red : :blue), s=10, zorder=2) # color=(A(edges,v)<0 ? :yellow : :black)  
+end
+
+
+axis("equal")
+# -
 
 # ## Thermal Conductivity
 
@@ -55,7 +89,7 @@ t0 = now()
 # +
 L = [16, 16]
 PBC = [false, true]
-Basis = HexBasis() # CubicBasis(length(L))
+Basis = CubicBasis(length(L))
 
 𝒽 = [0.0] #range(0, 2, length=5)
 
@@ -123,21 +157,21 @@ print("\n", canonicalize(t1 - t0))
 # PARAMETERS
 L = [16, 16]
 PBC = [true, true]
-Basis = CubicBasis(length(L))
+Basis = CubicBasis(length(L)) # HexBasis() # 
 
 # find minimal representable temperature (just done for 𝒽=0 for now - MAYBE MODIFY TO PICK MAX OVER DIFF FIELDS??
 Nmin = (T,h) -> (λ == 0 ? 2/(4*exp(-4/T)/3+h*exp(-2*h/T)) : 2/(exp(-2/T)+2*h*exp(-2*h/T))) # minimal lattice size on which T=Tmin is possible - see https://www.desmos.com/calculator/ll1ljvjmcg for details
 Tmin = find_zero((T) -> prod(L)-Nmin(T,0), 0.3)
 Tmax = 10.0 * (λ == 0 ? 1.0 : 0.5)
-NumT = 50
+NumT = 30
 T = collect(range(Tmin, Tmax, length=NumT)) # the +0.1 is a fudge factor to fix our approximations earlier... (exact value doesn't matter b/c just adds ~a single demon)
 
-𝒽 = [0.0] #range(0, 2, length=5)
+𝒽 = [0.0] #range(0, 1, length=8)
 
 num_histories = 1
-runtime = 1000
-t_cutoff = 100
-t_therm = 500
+runtime = 10000
+t_cutoff = 1000
+t_therm = 5000
 t_autocorr = 100
 N_blocks = -1
 
@@ -200,18 +234,18 @@ print(canonicalize(t2 - t1))
 # PARAMETERS
 L = [16, 16]
 PBC = [true, true]
-Basis = CubicBasis(length(L))
+Basis = CubicBasis(length(L)) # HexBasis() # 
 
 Tmin = 0.01
 Tmax = 10.0
-NumT = 50
+NumT = 30
 
 #Tmax *= (λ == 0 ? 1.0 : 0.5)
 T = range(Tmin, Tmax, length=NumT)
 
-𝒽 = range(0, 2, length=5)
+𝒽 = [0.0] #range(0, 1, length=8)
 
-num_histories = 3
+num_histories = 1
 therm_runtime = 10000
 runtime = 10000
 t_therm = 5000
@@ -339,7 +373,7 @@ Basis = CubicBasis(length(L)) # HexBasis() #
 therm_runtime = 1000
 runtime = 2000
 tau = 2:floor(Int64, 0.75*runtime)
-num_histories = 200
+num_histories = 10
 𝒽 = [0.0] #range(0, 2, length=5)
 
 T = []; #range(0.01, 10.0, length=15);

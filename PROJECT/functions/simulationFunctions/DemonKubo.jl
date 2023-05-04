@@ -46,7 +46,7 @@
         hterm = (𝒽==0 || length(idxs)==0) ? false : rand(Bool) # randomly pick increment unit
         ΔD = hterm ? 2*𝒽 : δE
         
-        α = rand(idxs) # pick a random (valid) edge
+        α = hterm ? rand(idxs) : rand(eachindex(edges)) # pick a random (valid) edge
         
         edges[α].D += ΔD # increment its demon energy
         D_tot -= ΔD # decrement the total energy left to distribute
