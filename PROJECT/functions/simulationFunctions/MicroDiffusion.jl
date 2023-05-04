@@ -19,12 +19,7 @@
 @everywhere function MicroDiffnSetup(vertices, edges, numToFlip)
     # initialise entire system in ground state
     for edge in edges
-        if λ == 0
-            edge.σ = vertices[edge.∂[1]].x[1]-vertices[edge.∂[2]].x[1]==0 # gives ~GS ONLY for PBCs on square lattice
-        else
-            edge.σ = false
-        end
-        edge.D = 0
+        GroundState!(vertices, edges)
     end
     
     # flip numEdges random spins
@@ -66,7 +61,7 @@ end
         Aj = A(edges, vertices[j])
         Qj = abs(Q(edges, vertices[j]))
         
-        if (λ == 0 ? (Qj == 1 || Qj == 2) : Aj == -1) # in 6-vertex case, A_e = 2^2 = 4, A_2e = 4^2 = 16
+        if (λ == 0 ? (Qj == 1 || Qj == 2) : Aj == -1)
             push!(js, j)
         end
     end
@@ -125,7 +120,10 @@ end
     # find all the excitations
     js = []
     for j in eachindex(vertices)
-        if (λ == 0 ? B(edges, vertices[j]) == 4 : A(edges, vertices[j]) == -1) # in 2D spin ice case, A_e = 2^2 = 4, A_2e = 4^2 = 16
+        Aj = A(edges, vertices[j])
+        Qj = abs(Q(edges, vertices[j]))
+        
+        if (λ == 0 ? (Qj == 1 || Qj == 2) : Aj == -1)
             push!(js, j)
         end
     end

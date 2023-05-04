@@ -26,7 +26,7 @@ function PlotGraph(vertices, edges) # plot the graph - NOTE will only nicely plo
     end
     
     for v in vertices
-       scatter(v.x[1], v.x[2], color=:black, zorder=2) # color=(A(edges,v)<0 ? :yellow : :black)  
+       scatter(v.x[1], v.x[2], color=(v.σ ? :yellow : :black), zorder=2) # color=(A(edges,v)<0 ? :yellow : :black)  
     end
 end
 

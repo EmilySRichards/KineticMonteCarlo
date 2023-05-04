@@ -48,7 +48,7 @@ end
     ϵ = -λ*A(edges, vertex) + ξ*B(edges, vertex)
     
     for α in vertex.δ
-        ϵ += 0.5 * (𝒽*edges[α].σ - edges[α].D)
+        ϵ += 0.5 * (edges[α].D - 𝒽*edges[α].σ)
     end
 
     return ϵ

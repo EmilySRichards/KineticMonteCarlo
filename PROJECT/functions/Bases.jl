@@ -1,3 +1,23 @@
+# ### Coordination from basis
+@everywhere function Coordination(Basis)
+    Vs  = Basis[1]
+    Es  = Basis[2]
+    Bev = Basis[3]
+    
+    count = zeros(Int64, length(Vs))
+    for i in eachindex(Vs)
+        count[i] += length(Vs[i].δ)
+        
+        for be in Bev # don't forget to count dangling edges that have yet to be linked up!
+            count[i] += (be[1][2] == i) ? 1 : 0
+        end
+    end
+    
+    @assert all(count .== count[1]) # check that coordination is same for all all sites otherwise ill-defined
+    
+    return count[1]
+end
+
 # ### Different Unit Cells
 
 @everywhere function CubicBasis(dim)

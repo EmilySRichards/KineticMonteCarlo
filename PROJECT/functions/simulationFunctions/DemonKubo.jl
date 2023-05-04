@@ -16,29 +16,23 @@
 
 # ### Set up the geometry
 
-@everywhere function DemonKuboSetup(vertices, edges, T, 𝒽)
+@everywhere function DemonKuboSetup(vertices, edges, z, T, 𝒽)
     
     g = 2*𝒽 - δE*ceil(2*𝒽/δE)
     
     Dfun = (T) -> δE/(exp(δE/T)-1) - g/(exp(-g/T)+1)
     
     # REinitialise entire system in ground state
-    for edge in edges
-        if λ == 0
-            edge.σ = vertices[edge.∂[1]].x[1]-vertices[edge.∂[2]].x[1]==0 # gives ~GS ONLY for PBCs on square lattice
-        else
-            edge.σ = false
-        end
-        edge.D = 0
-    end
+    GroundState!(vertices, edges)
 
     # calculate total demon energy for given temperature T
-    D_tot = (λ == 0) ? 0 : length(vertices)
-    for edge in edges
-        D_tot += Dfun(T)
+    D_tot = 0
+    for v in vertices
+        D_tot -= ϵ(vertices, edges, v, 𝒽)
     end
     
-    D_tot += length(vertices) * ((λ == 0) ? ξ*Bsv(T, 𝒽) : -λ*Asv(T, 𝒽))
+    D_tot += length(edges) * Dfun(T)
+    D_tot += length(vertices) * (-λ*Asv([T], 𝒽, z)[1] + ξ*Bsv([T], 𝒽, z)[1] - 𝒽*Magnetisation([T], 𝒽, z)[1])
     
     # randomly increment demon energies
     idxs = collect(eachindex(edges)) 
@@ -101,7 +95,7 @@ end
 
 # ### Single Simulation Run
 
-@everywhere function DKuboSingle(vertices, edges, scale, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽)
+@everywhere function DKuboSingle(vertices, edges, scale, z, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽)
     
     # -- -1. Define Observables --
     g = 2*𝒽 - δE*ceil(2*𝒽/δE)
@@ -118,7 +112,7 @@ end
     tmax = runtime-t_therm
     
     # -- 0. Run Simulation --
-    DemonKuboSetup(vertices, edges, T, 𝒽)
+    DemonKuboSetup(vertices, edges, z, T, 𝒽)
     J, D, E = DemonKubo(vertices, edges, runtime, 𝒽)
 
     # cut out thermalisation time
@@ -174,9 +168,10 @@ end
 function DKuboSimulation(L, PBC, Basis, num_histories, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽)
     
     vertices, edges, scale = LatticeGrid(L, PBC, Basis)
+    z = Coordination(Basis)
     
     ks = range(1,length(T)*length(𝒽)*num_histories)
-    args = [[deepcopy(vertices), deepcopy(edges), scale, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T[div(div(k-1,num_histories),length(𝒽))+1], 𝒽[rem(div(k-1,num_histories),length(𝒽))+1]] for k=ks]
+    args = [[deepcopy(vertices), deepcopy(edges), scale, z, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T[div(div(k-1,num_histories),length(𝒽))+1], 𝒽[rem(div(k-1,num_histories),length(𝒽))+1]] for k=ks]
     
     function hfun(args)
         return DKuboSingle(args...)

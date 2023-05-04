@@ -16,7 +16,7 @@
 
 # ### Set up the geometry
 
-@everywhere function BathSetup(vertices, edges, Nx, Lx, W)
+@everywhere function BathSetup(vertices, edges, Nx, Sx, W)
     Bh_j = []
     Bc_j = []
     
@@ -26,12 +26,12 @@
     # BATH SETUP
     for j in eachindex(vertices)
         # cold region
-        if vertices[j].x[1] <= W
+        if vertices[j].x[1] <= Sx*W
             push!(Bc_j, j)
         end
 
         # hot region
-        if vertices[j].x[1] > Lx-W
+        if vertices[j].x[1] > Sx*(Nx-W)
             push!(Bh_j, j)
         end
     end
@@ -52,14 +52,14 @@
        
     #vertices
     for j in eachindex(vertices)
-        x = 1 + vertices[j].x[1] * Nx/Lx
+        x = 1 + vertices[j].x[1]/Sx
         n = floor(Int, x)
         push!(strips[n][1], j)
     end
     
     # edges
     for α in eachindex(edges)
-        x = 1 + edges[α].x[1] * Nx/Lx
+        x = 1 + edges[α].x[1]/Sx
         n = floor(Int, x)
         push!(strips[n][2], α)
     end
@@ -283,18 +283,12 @@ function BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, 
     
     # set up graph and demarcate baths and strips
     vertices, edges, Scale = LatticeGrid(L, PBC, Basis);
-    Lx = L[1]*Scale[1] # length of sample
     Area = prod(L[2:end])*prod(Scale[2:end]) # cross-sectional area of sample
     
-    Bh_j, Bc_j, Bh_α, Bc_α, strips = BathSetup(vertices, edges, L[1], Lx, W)
+    Bh_j, Bc_j, Bh_α, Bc_α, strips = BathSetup(vertices, edges, L[1], Scale[1], W)
     
     # initialise spins in ground state
-    if λ == 0
-        for edge in edges # gives ~GS (exact for PBCs) for square lattice
-            edge.σ = vertices[edge.∂[1]].x[1]-vertices[edge.∂[2]].x[1]==0
-        end
-    end
-    
+    GroundState!(vertices, edges)
     
     ks = range(1,2*length(𝒽)*num_histories)
     Hs = [num_histories for k=ks]

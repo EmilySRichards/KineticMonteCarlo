@@ -23,14 +23,7 @@
             edge.σ = rand(Bool)
         end
     else # initialise entire system in ground state
-        for edge in edges
-            if λ == 0
-                edge.σ = vertices[edge.∂[1]].x[1]-vertices[edge.∂[2]].x[1]==0 # gives ~GS ONLY for PBCs on square lattice
-            else
-                edge.σ = false
-            end
-            edge.D = 0
-        end
+        GroundState!(vertices, edges)
     end
     
     E = zeros(therm_runtime+1) # just set initial energy to zero since we only need the variance
