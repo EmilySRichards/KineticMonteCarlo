@@ -87,9 +87,5 @@ end
     𝐯 = [vertices[𝒊[1]], vertices[𝒊[2]]]
     𝛔 = [(-1)^edges[𝜷[1]].σ, (-1)^edges[𝜷[2]].σ]
     
-    if ξ == 0
-        return λ*(A(edges, 𝐯[1]) - A(edges, 𝐯[2])) + 0.5*𝒽*((-1)^edges[𝜷[2]].σ - (-1)^edges[𝜷[1]].σ)
-    end
-    
-    return λ*(A(edges, 𝐯[2]) - A(edges, 𝐯[1])) - 2*ξ*(𝛔[2]*Q(edges, 𝐯[2]) - 𝛔[1]*Q(edges, 𝐯[1])) + 0.5*𝒽*((-1)^edges[𝜷[2]].σ - (-1)^edges[𝜷[1]].σ)
+    return λ*(A(edges, 𝐯[2]) - A(edges, 𝐯[1])) - 2*ξ*(𝛔[2]*Q(edges, 𝐯[2]) - 𝛔[1]*Q(edges, 𝐯[1])) + 0.5*𝒽*(𝛔[2] - 𝛔[1])
 end

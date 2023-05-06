@@ -49,10 +49,11 @@ t0 = now()
 @everywhere global const ξ::Float64 = 1
 
 # which dynamics to use (only affects microcanonical functions)
-@everywhere global const twoFlip::Bool = true
+@everywhere global const twoFlip::Bool = false
 
 # demon quantisation
 @assert (λ==1 && ξ==0) || (λ==0 && ξ==1) # otherwise demons will break b/c not quantised
+@everywhere global isSpinIce = (λ==0 && ξ==1)
 @everywhere global const δE::Int = (λ==0) ? 8*ξ : 4*λ
 # -
 
@@ -60,10 +61,43 @@ t0 = now()
 
 # +
 # chosen basis
-Basis = CubicBasis(2) # HexBasis() #
+Basis = CubicBasis(2) # HexBasis() # 
+@everywhere isDiamond = false
 
 # function to generate groundstate
-@everywhere GroundState!(vertices, edges) = GroundState!(vertices, edges, Basis == DiamondBasis())
+@everywhere GroundState!(vertices, edges) = GroundState!(vertices, edges, isDiamond)
+
+# coordination number of lattice (ASSERTED CONSTANT FOR OUR PURPOSES)
+z = Coordination(Basis)
+
+# +
+# Approxn of self-diffusion coeff at zero density
+
+q = (mod(z,2)==0) ? 2 : 3 # minimal excitation charge |Q|
+na = (q + z) / 2 # number of allowed directions which don't increase |Q| on site
+
+if !isSpinIce || na==z # toric code OR spin ice with q=z (=> all directions allowed, e.g. hexagonal)
+    Dself = z
+else # spin ice with disallowed directions
+    Dself = na * (1 - 2/na^2) # in the case of hypercubic and pyrochlore spin ice this is correct, but does NOT hold for more general bond angles
+end
+
+Dself /= 2 * length(Basis[4])
+# -
+
+# ### Approxns
+
+# +
+if twoFlip
+    Kfun = (T, h) -> Dself ./ 2 .* (0.5 .* δE ./ T).^2 .* ExcitationDensity(T, h, z) .* (1 .- ExcitationDensity(T, h, z)) .* (1 .- Magnetisation(T, h, z)) ./ 2 # additional magnetisation factor for +-+- bond percolation
+else
+    Kfun = (T, h) -> Dself ./ 2 .* (0.5 .* δE ./ T).^2 .* ExcitationDensity(T, h, z) .* (1 .- ExcitationDensity(T, h, z))
+end
+
+Cfun = (T, h) -> 2/z .* (λ^2 .* sech.(λ ./T).^2 + 2 * h^2 .* sech.(h ./T).^2) ./ T.^2
+
+Dfunsv = (T, h) -> Kfun(T, h) ./ HeatCapacity(T, h, z)
+Dfun  = (T, h) -> Kfun(T, h) ./ Cfun(T, h)
 # -
 
 # ## Testing Data Structure
@@ -110,12 +144,12 @@ end
 @everywhere include(dir * "/functions/simulationFunctions/DemonHeatBath.jl")
 
 # +
-L = [40, 30]
+L = [15, 15]
 PBC = [false, true]
 
 𝒽 = [0.0]
 
-num_histories = 15
+num_histories = 1
 therm_runtime = 1000
 runtime = 1000
 t_therm = 500
@@ -135,7 +169,6 @@ idx = W+1:size(T, 2)-W+2;
 κ[1,:,:] ./= 2;
 κ[2,:,:] ./= 2;
 
-z = Coordination(Basis)
 colors = jetmap(length(𝒽))
 
 figure()
@@ -149,7 +182,10 @@ savefig("figs/Demon_Bath_Temperatures.png")
 
 figure()
 for i in eachindex(𝒽)
+    plot(T[1,idx,i], Kfun(T[1,idx,i], 𝒽[i]), color=colors[i])
     plotWithError(κ[1,idx,i], T[1,idx,i], colors[i], ".", κStd[1,idx,i], TStd[1,idx,i])
+    
+    plot(T[2,idx,i], Kfun(T[2,idx,i], 𝒽[i]), color=colors[i], "--")
     plotWithError(κ[2,idx,i], T[2,idx,i], colors[i], "*", κStd[2,idx,i], TStd[2,idx,i])
 end
 #ylim([0, 0.3])
@@ -178,7 +214,7 @@ print("\n", canonicalize(t1 - t0))
 #global testing = []
 
 # PARAMETERS
-L = [40, 30]
+L = [15, 15]
 PBC = [true, true]
 
 # find minimal representable temperature (just done for 𝒽=0 for now - MAYBE MODIFY TO PICK MAX OVER DIFF FIELDS??
@@ -190,10 +226,10 @@ T = collect(range(Tmin, Tmax, length=NumT)) # the +0.1 is a fudge factor to fix 
 
 𝒽 = [0.0] #range(0, 1, length=5)
 
-num_histories = 15
-runtime = 10000
-t_cutoff = 1000
-t_therm = 5000
+num_histories = 1
+runtime = 1000
+t_cutoff = 100
+t_therm = 500
 t_autocorr = 100
 N_blocks = -1
 
@@ -203,24 +239,16 @@ Tobs, κ, C, Diff, TobsStd, κStd, CStd, DiffStd = DKuboSimulation(L, PBC, Basis
 
 now()
 
-z = Coordination(Basis)
 colors = jetmap(length(𝒽))
 
 # + tags=[]
 figure()
-#plot(T, T, color=:black)
 for i in eachindex(𝒽)
     plotWithError(Tobs[:,i], T, colors[i], ".", TobsStd[:,i])
 end
 savefig("figs/Demon_Kubo_Temperature.png")
 # Just to check that out temperature estimates aren't too far off
-
-# +
-if twoFlip
-    Kfun = (T, h) -> (2 .* ExcitationDensity(T, h, z) ./ T.^2) .* (1 .- ExcitationDensity(T, h, z)) .* (1 .- Magnetisation(T, h, z)) ./ 2 # additional magnetisation factor for +-+- bond percolation
-else
-    Kfun = (T, h) -> (2 .* ExcitationDensity(T, h, z) ./ T.^2) .* (1 .- ExcitationDensity(T, h, z))
-end
+# -
 
 figure()
 for i in eachindex(𝒽)
@@ -229,22 +257,24 @@ for i in eachindex(𝒽)
 end
 #ylim([0, 0.3])
 savefig("figs/Demon_Kubo_Conductivity.png")
-# -
 
 figure()
-#plot(T, 0.5 ./ T.^2 ./ cosh.(1 ./T).^2, color=:black)
 for i in eachindex(𝒽)
+    plot(T, Cfun(T, 𝒽[i]), color=colors[i])
+    plot(T, HeatCapacity(T, 𝒽[i], z), "--", color=colors[i])
+    
     plotWithError(C[:,i], Tobs[:,i], colors[i], ".", CStd[:,i], TobsStd[:,i])
 end
 #ylim([0, 0.3])
 savefig("figs/Demon_Kubo_Capacity.png")
 
 figure()
-#plot(T, ones(size(T)), color=:black)
 for i in eachindex(𝒽)
+    plot(T, Dfunsv(T, 𝒽[i]), color=colors[i], "--")
+    plot(T, Dfun(T, 𝒽[i]), color=colors[i])
+    
     plotWithError(Diff[:,i], Tobs[:,i], colors[i], ".", DiffStd[:,i], TobsStd[:,i])
 end
-#ylim([0, 2.0])
 savefig("figs/Demon_Kubo_Diff.png")
 
 κ = Nothing
@@ -261,7 +291,7 @@ print(canonicalize(t2 - t1))
 
 # +
 # PARAMETERS
-L = [40, 30]
+L = [15, 15]
 PBC = [true, true]
 
 Tmin = 0.01
@@ -273,10 +303,10 @@ T = collect(range(Tmin, Tmax, length=NumT))
 
 𝒽 = [0.0] #range(0, 1, length=5)
 
-num_histories = 15
-therm_runtime = 10000
-runtime = 10000
-t_therm = 5000
+num_histories = 1
+therm_runtime = 1000
+runtime = 1000
+t_therm = 500
 t_autocorr = 100
 N_blocks = -1
 t_cutoff = 100
@@ -289,7 +319,6 @@ allComponents = false
 
 now()
 
-z = Coordination(Basis)
 colors = jetmap(length(𝒽));
 
 # +
@@ -327,17 +356,9 @@ for n in eachindex(𝒽)
     scatter(T, ℙ[:,n], color=colors[n])
 end
 savefig("figs/Micro_Kubo_Percolation.png")
-
-# +
-if twoFlip
-    Kfun = (T, h) -> 0.5 .* (0.5 .* δE ./ T).^2 .* ExcitationDensity(T, h, z) .* (1 .- ExcitationDensity(T, h, z)) .* (1 .- Magnetisation(T, h, z)) ./ 2 # additional magnetisation factor for +-+- bond percolation
-else
-    Kfun = (T, h) -> 0.5 .* (0.5 .* δE ./ T).^2 .* ExcitationDensity(T, h, z) .* (1 .- ExcitationDensity(T, h, z))
-end
+# -
 
 dim = allComponents ? length(L) : 1
-
-
 for i in 1:dim
     for j in 1:dim
         figure()
@@ -350,28 +371,23 @@ for i in 1:dim
         savefig("figs/Micro_Kubo_Conductivity_" * string(i) * string(j) * ".png")
     end
 end
-# -
 
 figure()
-Cfun = (T, h) -> (sech.(1 ./T).^2 + 2 * h^2 .* sech.(h ./T).^2) ./ 2 .* λ ./ T.^2
 for n in eachindex(𝒽)
     plot(T, Cfun(T, 𝒽[n]), color=colors[n])
     plot(T, HeatCapacity(T, 𝒽[n], z), "--", color=colors[n])
+    
     plotWithError(C[:,n], T, colors[n], ".", CStd[:,n])
 end
 savefig("figs/Micro_Kubo_Capacity.png")
-
-# +
-Dfun = (T, h) -> Kfun(T, h) ./ HeatCapacity(T, h, z)
-Dfun0  = (T, h) -> Kfun(T, h) ./ Cfun(T, h)
 
 figure()
 for i in 1:dim
     for j in 1:dim
         figure()
         for n in eachindex(𝒽)
-            plot(T, Dfun(T, 𝒽[n]), color=colors[n], "--")
-            plot(T, Dfun0(T, 𝒽[n]), color=colors[n])
+            plot(T, Dfunsv(T, 𝒽[n]), color=colors[n], "--")
+            plot(T, Dfun(T, 𝒽[n]), color=colors[n])
 
             plotWithError(Diff[i,j,:,n], T, colors[n], ".", DiffStd[i,j,:,n])
         end
@@ -379,7 +395,6 @@ for i in 1:dim
         savefig("figs/Micro_Kubo_Diff_" * string(i) * string(j) * ".png")
     end
 end
-# -
 
 κ = Nothing
 C_σ = Nothing
@@ -394,17 +409,17 @@ print("\n", canonicalize(t3 - t2))
 @everywhere include(dir * "/functions/simulationFunctions/MicroDiffusion.jl")
 
 # +
-L = [40, 30]
+L = [30, 30]
 PBC = [true, true]
 
 therm_runtime = 1000
-runtime = 2000
-tau = 2:floor(Int64, 0.75*runtime)
-num_histories = 10
+runtime = 10000
+tau = 2:floor(Int64, 0.01*runtime)
+num_histories = 100
 𝒽 = [0.0] #range(0, 2, length=5)
 
-T = []; #range(0.01, 10.0, length=15);
-ℓ = [1, 1]; # floor.(Int64, range(1, prod(L)/4, length=20));
+T = []; # collect(range(0.01, 10.0, length=5));
+ℓ = [1, 1];
 
 
 x, δ, Mag, Perc, p, Nv = DiffSim(L, PBC, Basis, therm_runtime, runtime, ℓ, T, 𝒽);
@@ -417,7 +432,6 @@ D, α, C, γ, MSD, StepCorr = DiffAnalysis(x, δ, p, runtime, ℓ, T, 𝒽);
 #end
 # -
 
-z = Coordination(Basis)
 colors = jetmap(length(𝒽))
 
 # +
@@ -427,7 +441,7 @@ figure()
 for i in eachindex(𝒽)
     if length(T) > 0
         scatter(T, Mag[:,i], color=colors[i])
-        plot(T, Magnetisation(T, 𝒽[i]), color=colors[i])
+        plot(T, Magnetisation(T, 𝒽[i], z), color=colors[i])
     elseif length(ℓ) > 0
         scatter(ℓ, Mag[:,i], color=colors[i])
     end
@@ -466,8 +480,8 @@ figure()
 for t in size(StepCorr, 2)
     for i in size(StepCorr, 3)
         if StepCorr[:,t,i] != [NaN for _ in 1:size(StepCorr, 1)]
-            #loglog(abs.(StepCorr[:,t,i]), color=colors[i])
-            plot(StepCorr[:,t,i], color=colors[i])
+            loglog(abs.(StepCorr[:,t,i]), color=colors[i])
+            #plot(StepCorr[:,t,i], color=colors[i])
         end
     end
 end
@@ -480,14 +494,9 @@ figure() # density of quasiparticles
 p = mean(p, dims=3) ./ Nv
 
 if length(T) > 0
-    nfun0 = (T) -> (1 .- tanh.(λ ./ T)) ./ 2
-    Mfun0 = (T, h) -> tanh.(h ./ T)
-    nfun = (T, h) -> nfun0(T .* (1 .- h .* Mfun0(T, h) ./ 2)) # 
-    nfun2 = (T, h) -> nfun0(T ./ (1 .+ h .* Mfun0(T, h) ./ 2))
-    
     for i in eachindex(𝒽)
         scatter(T, p[:,i], color=colors[i])
-        plot(T, ExcitationDensity(T, 𝒽[i]), color=colors[i])
+        plot(T, ExcitationDensity(T, 𝒽[i], z), color=colors[i])
     end
 elseif length(ℓ) > 0
     pExp = 2 .* ℓ ./ Nv
@@ -498,23 +507,15 @@ elseif length(ℓ) > 0
     plot(ℓ, pExp, color=:black, "--")
 end
 savefig("figs/Quasiparticle Number.png")
+# -
 
-# +
 figure() # diffusion coefficient
-nfun0 = (T) -> (1 .- tanh.(λ ./ T)) ./ 2
-#nfun  = (T, h) -> 1 ./ (1 .+ exp.(2 .* λ ./ T) .* exp.(h ./ T ./ sqrt.(nfun0(T))))
-#Dfun  = (T, h) -> (1 .- nfun(T, h)) .* (1 .- Mfun(T, h)) ./ 2
-DfunPlus = (T, h) -> (1 .- nfun0(T)) .* (1 .+ Mfun(T, h)) ./ 2
-DfunMinus = (T, h) -> (1 .- nfun0(T)) .* (1 .- Mfun(T, h)) ./ 2
-
-#nfun = (T) -> λ == 0 ? 4 .* (exp.(-4 ./ T) .+ exp.(-16 ./ T)) ./ (3 .+ 4 .* exp.(-4 ./ T) .+ exp.(-16 ./ T)) : 0.5 .* (1 .- tanh.(λ ./ T))
-#Dfun = (n) -> λ == 0 ? 7/12 .* (1 .- n) : 1 .* (1 .- n)
-
 if length(T) > 0
     for i in eachindex(𝒽)
+        plot(T, Dfunsv(T, 𝒽[i]), color=colors[i], "--")
+        plot(T, Dfun(T, 𝒽[i]), color=colors[i])
+        
         plotWithError(D[1,:,i], T, colors[i], ".", D[2,:,i])
-        #plot(T, DfunPlus(T, 𝒽[i]), color=colors[i])
-        #plot(T, DfunMinus(T, 𝒽[i]), color=colors[i], "--")
     end
 elseif length(ℓ) > 0
     #plot(ℓ, Dfun(2 .* ℓ ./ Nv), color=:black)
@@ -523,7 +524,6 @@ elseif length(ℓ) > 0
     end
 end
 savefig("figs/Diffusion Coefficient.png")
-# -
 
 figure() # diffusion exponent
 if length(T) > 1

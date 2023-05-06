@@ -18,9 +18,7 @@
 
 @everywhere function MicroDiffnSetup(vertices, edges, numToFlip)
     # initialise entire system in ground state
-    for edge in edges
-        GroundState!(vertices, edges)
-    end
+    GroundState!(vertices, edges)
     
     # flip numEdges random spins
     valid_edges = collect(eachindex(edges))
@@ -36,10 +34,10 @@
         push!(flipped_edges, α) # add edge to list to flip
         
         # remove α AND other edges which share vertices with it
-        deleteat!(valid_edges, findall(x->x==α, valid_edges))
+        deleteat!(valid_edges, findall(valid_edges.==α))
         for i in edges[α].∂
             for β in vertices[i].δ
-                deleteat!(valid_edges, findall(x->x==β, valid_edges))
+                deleteat!(valid_edges, findall(valid_edges.==β))
             end                
         end
     end
@@ -61,7 +59,7 @@ end
         Aj = A(edges, vertices[j])
         Qj = abs(Q(edges, vertices[j]))
         
-        if (λ == 0 ? (Qj == 1 || Qj == 2) : Aj == -1)
+        if (isSpinIce ? (Qj == 3 || Qj == 2) : Aj == -1)
             push!(js, j)
         end
     end
@@ -123,7 +121,7 @@ end
         Aj = A(edges, vertices[j])
         Qj = abs(Q(edges, vertices[j]))
         
-        if (λ == 0 ? (Qj == 1 || Qj == 2) : Aj == -1)
+        if (isSpinIce ? (Qj == 3 || Qj == 2) : Aj == -1)
             push!(js, j)
         end
     end
@@ -142,7 +140,7 @@ end
             
             # propose flips
             i = rand(eachindex(vertices)) # shared vertex
-            𝜷 = sample(vertices[i].δ, 2; replace=false) # two nearest-neighbour spins to flip (in order)
+            𝜷 = sample(vertices[i].δ, 2; replace=true) # two nearest-neighbour spins to flip (in order)
             
             𝒊 = [edges[𝜷[n]].∂[findfirst(edges[𝜷[n]].∂ .!= i)] for n in 1:2] # outer vertices (but may still coincide)
             
@@ -161,7 +159,7 @@ end
                 edges[𝜷[2]].σ = !edges[𝜷[2]].σ
                 
                 # ΔE=0 => an excitation is linked to this edge => move it
-                # we choose to assume the moving particle always starts at one of the edge vertices => valid way of tracking them if we don't allow repeat edges
+                # we choose to assume the central particle is fixed => valid way of tracking them
                 
                 # displacement of edge (fixed to account for PBCs)
                 Δ1 = vertices[i].x - vertices[𝒊[1]].x
@@ -262,7 +260,7 @@ end
     for d in 1:D # sum over dimensions
         corr .+= dropdims(mean(MyAutocor(dx[d,:,:], false), dims=1), dims=1) # average over particles
     end
-    corr ./= corr[1] # normalise
+    #corr ./= corr[1] # normalise
     
     return corr
 end

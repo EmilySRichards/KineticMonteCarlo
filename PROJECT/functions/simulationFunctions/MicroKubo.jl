@@ -54,14 +54,7 @@ end
             edge.σ = rand(Bool)
         end
     else # initialise entire system in ground state
-        for edge in edges
-            if λ == 0
-                edge.σ = vertices[edge.∂[1]].x[1]-vertices[edge.∂[2]].x[1]==0 # gives ~GS ONLY for PBCs on square lattice
-            else
-                edge.σ = false
-            end
-            edge.D = 0
-        end
+        GroundState!(vertices, edges)
     end
 
     
@@ -89,7 +82,7 @@ end
         E[t+1] = E[t]
         for _ in vertices
             i = rand(eachindex(vertices)) # shared vertex
-            𝜷 = sample(vertices[i].δ, 2; replace=false) # two nearest-neighbour spins to flip (in order)
+            𝜷 = sample(vertices[i].δ, 2; replace=true) # two nearest-neighbour spins to flip (in order)
             𝒊 = [edges[𝜷[n]].∂[findfirst(edges[𝜷[n]].∂ .!= i)] for n in 1:2] # outer vertices (but may still coincide)
             
             ΔE = ΔE_2flip(vertices, edges, 𝜷, 𝒊, i, 𝒽)
