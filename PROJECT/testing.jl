@@ -228,15 +228,17 @@ end
 function RemoveEdges(vertices, edges, αs)
     
     for α in αs # for each edge α
-        toKill = []
+        verticesToKill = []
         for i in edges[α].∂ # for each vertex connected to α...
 
             deleteat!(vertices[i].δ ,findfirst(vertices[i].δ .== α)) # remove α from its coboundary
-            push!(toKill, i)
+            push!(verticesToKill, i)
         end
 
         edges[α].∂ = [] # set boundary of α to 0
     end
+    
+    # Note we don't actually delete any edges, just disconnect them, because we don't want to mess up the indexing
 end
 
 # # ACTUAL TEST - RANDOM WALK ON GRAPH!!
@@ -482,58 +484,97 @@ print("D = ", exp(Est[1]), ", α = ", Est[2])
 
 # #### Note NO DIVIDING BY $z=2d=4$ in $D$ since we're measuring in units of $\delta t = 1 = 4\delta t_M$
 
+# +
+L = [32, 32]
+PBC = [true, true]
+
+H = 250 # number of independent histories
+P = 250 # number of particles
+T = 1000 # simulation time (in units of δt_M = δt/4!!)
+tau = 3:100
+
+t = collect(range(0,T-1))
+
+vertices, edges = CubicGrid(L, PBC);
+
+#toRemove = sample(eachindex(edges), floor(Int64, 3*length(edges)/4); replace=false)
+#RemoveEdges(vertices, edges, toRemove)
+# -
+
+PlotGraph(vertices, edges)
+
+i, x, dx = walk(vertices, edges, P, 100, L, false, false);
+
+for p in 1:P
+    plot(x[1,p,:], x[2,p,:])
+end
+xlim([0,L[1]+1])
+ylim([0,L[2]+1])
+
+plot(Msd(x))
+
 # ## Percolation!!
 
 # +
-L = [50, 50]
+L = [64, 64]
 PBC = [false, false]
 
-P = 1000 # number of particles
+H = 10 # number of independent histories
+P = 10 # number of particles
 T = 200 # simulation time (in units of δt_M = δt/4!!)
+tau = 3:100
 
 t = collect(range(0,T-1))
 
 percolation = range(0.0, 1.0, length=50)
 
 
-r = zeros(length(percolation), T)
-v = zeros(length(percolation), T-1)
-S = zeros(length(percolation))
+r = zeros(H, length(percolation), T)
+v = zeros(H, length(percolation), T-1)
 
 colors = jetmap(length(percolation))
 
-for (n, p) in enumerate(percolation)
+for h in 1:H
     vertices, edges = CubicGrid(L, PBC) # LatticeGrid(L, PBC, SquareSublatticeBasis()) # 
-    toKill = sample(eachindex(edges), floor(Int64, p*length(edges)); replace=false)
-    RemoveEdges(vertices, edges, toKill)
+    originalNumEdges = length(edges)
+    numRemoved = 0
     
-    i, x, dx = walk(vertices, edges, P, T, L, false, true);
-    r[n,:] = Msd(x);
-    v[n,:] = DirrCorr(dx);
-    
-    for p in 1:P
-        S[n] += length(unique(i[n,:]))
+    for (n, p) in enumerate(percolation)
+        numToRemove = floor(Int64, p*originalNumEdges) - numRemoved
+        toRemove = sample(eachindex(edges), numToRemove; replace=false)
+        RemoveEdges(vertices, edges, toRemove)
+        numRemoved += numToRemove
+        
+        i, x, dx = walk(vertices, edges, P, T, L, false, false);
+        r[h,n,:] = Msd(x);
+        v[h,n,:] = DirrCorr(dx);
     end
-    S[n] /= P
 end
 # -
 
 for n in eachindex(percolation)
-    loglog(t, r[n,:], color=colors[n])
+    plot(t, mean(r[:,n,:], dims=1)', color=colors[n])
 end
 
-for n in eachindex(percolation)
-    plot(t[1:end-1], v[n,:], color=colors[n])
+for n in reverse(eachindex(percolation))
+    plot(t[1:end-1], mean(v[:,n,:], dims=1)', color=colors[n])
 end
 
 # +
-fun = (x, p) -> p[1] .+ x .* p[2]
-p1 = [0.0, 0.5] # initial guess
-p2 = [1.0, 1.0] # initial guess ~> A=1 and γ=0, i.e. Brownian motion
+fun = (x, p) -> p[1] .* x .^ p[2]
+p1 = [2*1.0, 1.0] # initial guess
+p2 = [1*1.0, 1.0] # initial guess ~> A=1 and γ=0, i.e. Brownian motion
 
-tau = 3:floor(Int64, length(t)/2)
-
-xfit = log.(t[tau])
+xfit  = [[] for n in eachindex(percolation)]
+yfit1  = [[] for n in eachindex(percolation)]
+yfit2  = [[] for n in eachindex(percolation)]
+for n in eachindex(percolation)
+    for h in 1:H
+        append!(xfit[n], t[tau])
+        append!(yfit1[n], r[h,n,tau])
+        append!(yfit2[n], v[h,n,tau])
+    end
+end
 
 D = zeros(2, length(percolation))
 α = zeros(2, length(percolation))
@@ -543,17 +584,16 @@ for (n, p) in enumerate(percolation)
     
     # MSD data
     try
-        yfit = log.(r[n,tau])
-        fit = curve_fit(fun, xfit, yfit, p1);
+        fit = curve_fit(fun, xfit[n], yfit1[n], p1);
 
         Est = fit.param
         Cov = estimate_covar(fit)
 
-        D[:,n] = [exp(Est[1]), exp(Est[1])*sqrt(Cov[1,1])]
+        D[:,n] = [Est[1], sqrt(Cov[1,1])]
         α[:,n] = [Est[2], sqrt(Cov[2,2])]
     
     catch e
-        print("\n Fit failed at percolation ", p)
+        print(e, "\n")
         D[:,n] = [NaN, NaN]
         α[:,n] = [NaN, NaN]
     end
@@ -567,7 +607,7 @@ for (n, p) in enumerate(percolation)
     #    Est2 = fit2.param
     #    Cov2 = estimate_covar(fit2)
     #
-    #    A[:,n] = exp(Est2[1])
+    #    A[:,n] = Est2[1]
     #    γ[:,n] = Est2[2]
     #catch e
     #    print("\n Fit failed at percolation ", p)
@@ -576,8 +616,6 @@ for (n, p) in enumerate(percolation)
     #end
 end
 # -
-
-plot(percolation, S)
 
 errorbar(percolation, D[1,:], yerr=D[2,:])
 
@@ -588,11 +626,13 @@ errorbar(percolation, α[1,:], yerr=α[2,:])
 # #### Fit Check!
 
 # +
-for n in eachindex(percolation)
-    plot(t, r[n,:], color=colors[n])
+ns = eachindex(percolation)
+
+for n in ns
+    plot(t, mean(r[:,n,:], dims=1)', color=colors[n])
 end
 
-for n in eachindex(percolation)
+for n in ns
     plot(t, D[1,n].*t.^α[1,n], color=:black, "--")
 end
 # -

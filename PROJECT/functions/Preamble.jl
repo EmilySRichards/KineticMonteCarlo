@@ -23,15 +23,15 @@ using Distributed
 global const multiProcess = (nworkers()>1) ? true : false # only use multiprocessing if run with -p, otherwise use -t threads by default
 
 if multiProcess
-    print(nworkers())
+    print("Num workers: ", nworkers(), "\n\n")
     
     @everywhere using Pkg
     @everywhere Pkg.activate(dir)
-    @everywhere using Distributed, StatsBase, Statistics, Distributions, Roots, PyPlot, LsqFit, Dates, ForwardDiff, Combinatorics
+    @everywhere using Distributed, StatsBase, Statistics, Distributions, Roots, PyPlot, LsqFit, Dates, ForwardDiff, Combinatorics, JLD
 else
-    print(Threads.nthreads())
+    print("Num threads: ", Threads.nthreads(), "\n\n")
     
-    using StatsBase, Statistics, Distributions, Roots, PyPlot, LsqFit, Dates, ForwardDiff, Combinatorics
+    using StatsBase, Statistics, Distributions, Roots, PyPlot, LsqFit, Dates, ForwardDiff, Combinatorics, JLD
 end
 
 using Colors, PlotUtils

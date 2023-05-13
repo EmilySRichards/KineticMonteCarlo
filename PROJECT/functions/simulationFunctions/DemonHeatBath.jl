@@ -26,12 +26,12 @@
     # BATH SETUP
     for j in eachindex(vertices)
         # cold region
-        if vertices[j].x[1] <= Sx*W
+        if vertices[j].x[1] < Sx*W
             push!(Bc_j, j)
         end
 
         # hot region
-        if vertices[j].x[1] > Sx*(Nx-W)
+        if vertices[j].x[1] >= Sx*(Nx-W)
             push!(Bh_j, j)
         end
     end
@@ -90,12 +90,14 @@ end
     ΔEc =  zeros(runtime)
     
     D = zeros(length(edges), runtime+1)
+    E = zeros(length(edges), runtime+1) # no need to set initial energy b/c we just need the variance
     for α in eachindex(edges) # set initial demon energy
         D[α,1] = edges[α].D
     end
     
     for t in 1:runtime
         D[:,t+1] = D[:,t]
+        E[:,t+1] = E[:,t]
         for _ in edges
             β = rand(eachindex(edges))
             ΔE = ΔE_flip(vertices, edges, β, 𝒽)
@@ -105,6 +107,7 @@ end
                     edges[β].σ = !edges[β].σ
                     
                     ΔEh[t] += ΔE
+                    E[β,t+1] += ΔE
                 end
                 
             elseif β in Bc_α # if edge lies in the cold bath...
@@ -112,6 +115,7 @@ end
                     edges[β].σ = !edges[β].σ
                     
                     ΔEc[t] += ΔE
+                    E[β,t+1] += ΔE
                 end
                 
             else # otherwise...
@@ -120,12 +124,13 @@ end
                     edges[β].D -= ΔE
                     
                     D[β,t+1] -= ΔE
+                    E[β,t+1] += ΔE
                 end
             end
         end
     end
     
-    return ΔEh, ΔEc, D[:,2:end] # cut off start point for consistency
+    return ΔEh, ΔEc, D[:,2:end], E[:,2:end] # cut off start point for consistency
 end
 
 # ### Spin-swap demon dynamics routine 
@@ -188,10 +193,11 @@ end
 
 # ### Single Simulation Run
 
-@everywhere function BathSingle(vertices, edges, Area, Tc, Th, Bh_α, Bc_α, strips, therm_runtime, runtime, t_therm, t_autocorr, N_blocks, 𝒽)
+@everywhere function BathSingle(vertices, edges, Length, Area, Tc, Th, Bh_α, Bc_α, strips, therm_runtime, runtime, t_therm, t_autocorr, N_blocks, 𝒽)
     
     # -- -1. Define Observables --
     g = 2*𝒽 - δE*ceil(2*𝒽/δE)
+    Δx = Length/length(strips)
     
     Dfun = (T) -> δE/(exp(δE/T)-1) - g/(exp(-g/T)+1)
     Tfun = (D) -> (𝒽==0) ? δE/log(1.0 + δE/mean(D)) : find_zero((T) -> sign(T)*Dfun(abs(T)) - mean(D), (-2*Th, 2*Th))
@@ -199,8 +205,9 @@ end
     Jfun = (ΔEc, ΔEh) -> mean((ΔEc-ΔEh)/2/Area) # dividing by Area relies on baths having same number of edges!
     κfun = (ΔEc, ΔEh, Dl, Dr) -> -2*Δx * Jfun(ΔEc, ΔEh) / (Tfun(Dr) - Tfun(Dl))
     
-    CDfun = (N, D) -> N * ((δE/Tfun(D))^2 * exp(δE/Tfun(D))/(exp(δE/Tfun(D))-1)^2 + (g/Tfun(D))^2 * exp(g/Tfun(D))/(exp(g/Tfun(D))+1)^2)
-    Cfun = (N, D, E) -> CDfun(N, D) * Var(E) /(CDfun(N, D)*Tfun(D)^2 - Var(E)) / N
+    CDfun = (N, D) -> ((δE/Tfun(D))^2 * exp(δE/Tfun(D))/(exp(δE/Tfun(D))-1)^2 + (g/Tfun(D))^2 * exp(g/Tfun(D))/(exp(g/Tfun(D))+1)^2)
+    C0fun = (N, D, E) -> Var(E) / Tfun(D)^2 / N
+    Cfun = (N, D, E) -> 1/(1/C0fun(N,D,E) - 1/CDfun(N,D))
     
     # -- 0. Run Simulation --
     
@@ -208,7 +215,7 @@ end
     CanonBath(vertices, edges, therm_runtime, Bh_α, Th, 𝒽)
     CanonBath(vertices, edges, therm_runtime, Bc_α, Tc, 𝒽)
     
-    ΔEh, ΔEc, D = DemonBath(vertices, edges, runtime, Th, Tc, Bh_α, Bc_α, 𝒽)
+    ΔEh, ΔEc, D, E = DemonBath(vertices, edges, runtime, Th, Tc, Bh_α, Bc_α, 𝒽)
     
     #𝒽 = twoFlip ? 1 : 0
     #
@@ -229,50 +236,59 @@ end
     ΔEh = ΔEh[t_therm+1:end]
     ΔEc = ΔEc[t_therm+1:end]
     D = D[:,t_therm+1:end]
+    E = E[:,t_therm+1:end]
     
     tmax = runtime - t_therm
     
     # Calculate strip energies
-    totD = zeros(Float64, (length(strips), tmax))
+    avgD = zeros(Float64, (length(strips), tmax))
+    totE = zeros(Float64, (length(strips), tmax))
+    
     NumSpins = zeros(Float64, (length(strips)))
     for x in eachindex(strips)
         NumSpins[x] = length(strips[x][2])
         
         tot_D_x = zeros(size(D, 2))
+        tot_E_x = zeros(size(E, 2))
         for α in strips[x][2]
             if α in Bc_α
-                totD[x,:] .+= Dfun(Tc)
+                avgD[x,:] .+= Dfun(Tc)
             elseif α in Bh_α
-                totD[x,:] .+= Dfun(Th)
+                avgD[x,:] .+= Dfun(Th)
             else
-                totD[x,:] += D[α,:]
+                avgD[x,:] += D[α,:]
             end
+            
+            totE[x,:] += E[α,:] 
         end
     end
-    avgD = totD ./ NumSpins
+    avgD ./= NumSpins
     
     # Functions
-    Δx = 1 # FOR NOW FINE BUT WILL DEPEND HOW STRIPS ARE DEFINED IN GENERAL
-    
     T_μ = zeros(length(strips))
     T_σ = zeros(length(strips))
     C_μ = zeros(length(strips))
     C_σ = zeros(length(strips))
     κ_μ = zeros(length(strips))
     κ_σ = zeros(length(strips))
+    D_μ = zeros(length(strips))
+    D_σ = zeros(length(strips))
     
     for x in 2:length(strips)-1
         Cfunx = (D, E) -> Cfun(NumSpins[x], D, E)
+        Difffunx = (ΔEc, ΔEh, Dl, Dr, D0, E) -> κfun(ΔEc, ΔEh, Dl, Dr) ./ Cfunx(D, E)
         
         T_μ[x], T_σ[x] = Estimator(Bootstrap, [avgD[x,:]], Tfun, t_autocorr, N_blocks)
-        C_μ[x], C_σ[x] = Estimator(Bootstrap, [avgD[x,:], totD[x,:]], Cfunx,  t_autocorr, N_blocks)
+        C_μ[x], C_σ[x] = Estimator(Bootstrap, [avgD[x,:], totE[x,:]], Cfunx,  t_autocorr, N_blocks)
         κ_μ[x], κ_σ[x] = Estimator(Bootstrap, [ΔEc, ΔEh, avgD[x-1,:], avgD[x+1,:]], κfun, t_autocorr, N_blocks)
+        D_μ[x], D_σ[x] = Estimator(Bootstrap, [ΔEc, ΔEh, avgD[x-1,:], avgD[x+1,:], avgD[x,:], totE[x,:]], Difffunx, t_autocorr, N_blocks)
     end
     
-    result = zeros(2, 3, length(strips))
+    result = zeros(2, 4, length(strips))
     result[:,1,:] = hcat(T_μ, T_σ.^2)'
     result[:,2,:] = hcat(κ_μ, κ_σ.^2)'
     result[:,3,:] = hcat(C_μ, C_σ.^2)'
+    result[:,4,:] = hcat(D_μ, D_σ.^2)'
     
     return result[:,:,2:end-1] # cut off ends where κ ill-defined 
 end
@@ -283,6 +299,7 @@ function BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, 
     
     # set up graph and demarcate baths and strips
     vertices, edges, Scale = LatticeGrid(L, PBC, Basis);
+    Length = L[1]*Scale[1] # length of sample
     Area = prod(L[2:end])*prod(Scale[2:end]) # cross-sectional area of sample
     
     Bh_j, Bc_j, Bh_α, Bc_α, strips = BathSetup(vertices, edges, L[1], Scale[1], W)
@@ -292,7 +309,7 @@ function BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, 
     
     ks = range(1,2*length(𝒽)*num_histories)
     Hs = [num_histories for k=ks]
-    args = [[deepcopy(vertices), deepcopy(edges), Area, Tc, Th, Bh_α, Bc_α, strips, therm_runtime, runtime, t_therm, t_autocorr, N_blocks, 𝒽[rem(div(k-1,num_histories), length(𝒽))+1]] for k=ks]
+    args = [[deepcopy(vertices), deepcopy(edges), Length, Area, Tc, Th, Bh_α, Bc_α, strips, therm_runtime, runtime, t_therm, t_autocorr, N_blocks, 𝒽[rem(div(k-1,num_histories), length(𝒽))+1]] for k=ks]
     
     function hfun(k, H, args)
         n = div(k-1,H) + 1 # unif/rand index
@@ -315,7 +332,7 @@ function BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, 
         end
     end 
         
-    tmp = zeros(2, 3, 2, length(strips)-2, length(𝒽), num_histories) # estimates for T,κ,C
+    tmp = zeros(2, 4, 2, length(strips)-2, length(𝒽), num_histories) # estimates for T,κ,C,D
     for k in ks
         ni,h = divrem(k-1,num_histories) .+ (1,1)
         n,i = divrem(ni-1,length(𝒽)) .+ (1,1)
@@ -328,5 +345,5 @@ function BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, 
     tmp[2,:,:,:,:] = sqrt.(tmp[2,:,:,:,:])
     tmp ./= num_histories
         
-    return tmp[1,1,:,:,:], tmp[1,2,:,:,:], tmp[1,3,:,:,:], tmp[2,1,:,:,:], tmp[2,2,:,:,:], tmp[2,3,:,:,:]
+    return tmp[1,1,:,:,:], tmp[1,2,:,:,:], tmp[1,3,:,:,:], tmp[1,4,:,:,:], tmp[2,1,:,:,:], tmp[2,2,:,:,:], tmp[2,3,:,:,:], tmp[2,4,:,:,:]
 end

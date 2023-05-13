@@ -45,9 +45,10 @@ end
 
 # ### Plotting with errors
 
-function plotWithError(Y, X, C, mk, YStd = zeros(size(Y)), XStd = zeros(size(X)))    
-    errorbar(X, Y, xerr=XStd, yerr=YStd, ls="None", marker=mk, color=C)
+function plotWithError(Y, X, C, mk, label="", YStd = zeros(size(Y)), XStd = zeros(size(X)))    
+    p = errorbar(X, Y, xerr=XStd, yerr=YStd, ls="None", marker=mk, color=C, label=label)
     # fill_between(X, Y-YStd, Y+YStd, alpha=0.5)
+    return p
 end
 
 # ### Colourmaps

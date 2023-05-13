@@ -49,7 +49,7 @@ end
 
 # ### Single spin-flip dynamics routine 
 
-@everywhere function MicroDiffn(vertices, edges, runtime, 𝒽)
+@everywhere function MicroDiffn(vertices, edges, runtime, 𝒽, allowBckgdMoves)
     
     dim = length(vertices[1].x)
     
@@ -77,13 +77,13 @@ end
         for _ in edges
             β = rand(eachindex(edges))
             ΔE = ΔE_flip(vertices, edges, β, 𝒽)
-
-            if ΔE == 0 # note ΔE NEVER zero if edge links two vertices (or none at all) => can ignore this case
-                edges[β].σ = !edges[β].σ
+            
+            j1 = edges[β].∂[1]
+            j2 = edges[β].∂[2]
+            
+            if ΔE == 0 && (allowBckgdMoves || (j1 in js || j2 in js))
                 
-                # ΔE=0 => an excitation is linked to this edge => move it 
-                j1 = edges[β].∂[1]
-                j2 = edges[β].∂[2]
+                edges[β].σ = !edges[β].σ
                 
                 # displacement of edge (fixed to account for PBCs)
                 Δ = vertices[j2].x - vertices[j1].x
@@ -91,17 +91,20 @@ end
                     Δ[d] /= (abs(Δ[d])>1) ? -abs(Δ[d]) : 1 # note MINUS abs to ensure orientation is right (i.e. Δ>0 if going from RHS to LHS)
                 end
                 
+                # if a prtcl is linked to this edge, move it - note ΔE=/=0 if prtcl on both vertices => ignore this case
                 n1 = findfirst(js.==j1)
                 n2 = findfirst(js.==j2)
                 if n1!=nothing     # j1 = js[n1] = excitation
                     js[n1] = j2
-                    xs[:,n1,t+1] += Δ
+                    xs[:,n1,t+1] += Δ # = vertices[j2].x # 
                     δs[:,n1,t] += Δ
                 elseif n2!=nothing # j2 = js[n2] = excitation
                     js[n2] = j1
-                    xs[:,n2,t+1] -= Δ
+                    xs[:,n2,t+1] -= Δ # = vertices[j1].x # 
                     δs[:,n2,t] -= Δ
                 end
+                
+                # else no prtcls => nothing to track!
             end
         end
     end
@@ -150,10 +153,9 @@ end
             ΔE = ΔE_2flip(vertices, edges, 𝜷, 𝒊, i, 𝒽)
 
             # decide whether to accept and perform the move
-            #if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ && ΣA>0 # energy AND magnetisation conserved AND no pair diffusion moves (i.e. no particle at central site i)
+            if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ && ΣA>0 # energy AND magnetisation conserved AND no pair diffusion moves (i.e. no particle at central site i)
             #if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ && ΣA<0 # energy AND magnetisation conserved AND ONLY pair diffusion moves (i.e. no particle at central site i)
-            if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ # energy AND magnetisation conserved
-            #if ΔE == 0 # energy conserved
+            #if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ # energy AND magnetisation conserved
                 
                 edges[𝜷[1]].σ = !edges[𝜷[1]].σ
                 edges[𝜷[2]].σ = !edges[𝜷[2]].σ
@@ -268,12 +270,18 @@ end
 # ### Single diffusion routine
 
 @everywhere function DiffSimSingle(vertices, edges, therm_runtime, runtime, useT, ℓorT, 𝒽)
-
+    
     # thermalise to correct temperature OR correct number of particles
     if useT
         MicroKuboSetup(vertices, edges, therm_runtime, ℓorT, 𝒽, false)
     else
         MicroDiffnSetup(vertices, edges, ℓorT)
+        
+        if twoFlip # allow particles to separate before we start tracking them!
+            MicroDiffn_2flip(vertices, edges, therm_runtime, 𝒽)
+        else
+            MicroDiffn(vertices, edges, therm_runtime, 𝒽, true)
+        end
     end
     
     M = 0
@@ -301,7 +309,7 @@ end
     if twoFlip
         x, δ = MicroDiffn_2flip(vertices, edges, runtime, 𝒽)
     else
-        x, δ = MicroDiffn(vertices, edges, runtime, 𝒽)
+        x, δ = MicroDiffn(vertices, edges, runtime, 𝒽, true)
     end
     
     return x, δ, M, ℙ
@@ -365,7 +373,7 @@ end
 # ### Single analysis routine
 
 @everywhere function DiffAnalysisSingle(p, x, δ, tau)
-    num_histories = size(p)
+    dim = size(x[1], 1)
     T = size(x[1], 3)
     
     t = range(0,T)
@@ -373,52 +381,101 @@ end
     
     valid_histories = findall(p .> 0) # those for which there are particles! - - equiv to nanmean...
     
-    if length(valid_histories) == 0
-        return [NaN, NaN], [NaN, NaN], [NaN, NaN], [NaN, NaN], [NaN for _ in 1:T], [NaN for _ in 1:T-1]
-    end
-    
-    sq_disp = zeros(T)
-    step_corr = zeros(T-1)
+    ts = []
+    sq_disp = []
+    step_corr = []
     for h in valid_histories
-        sq_disp += Msd(x[h])
-        step_corr += DirrCorr(δ[h])
+        append!(ts, t[tau])       
+        append!(sq_disp, Msd(x[h])[tau])
+        append!(step_corr, DirrCorr(δ[h])[tau])
     end
-    sq_disp ./= length(valid_histories)
-    step_corr ./= length(valid_histories)
     
-    if sq_disp == zeros(size(sq_disp))
+    if length(ts) == 0
         return [NaN, NaN], [NaN, NaN], [NaN, NaN], [NaN, NaN], [NaN for _ in 1:T], [NaN for _ in 1:T-1]
     end
+    
+    #xfit1 = log.(ts)
+    #yfit1 = log.(sq_disp)
+    xfit1 = ts
+    yfit1 = sq_disp
+    
+    #idx = abs.(step_corr) .> 0
+    #xfit2 = log.(ts[idx])
+    #yfit2 = log.(abs.(step_corr[idx]))
+    xfit2 = ts
+    yfit2 = step_corr ./ sign(step_corr[findmax(abs.(step_corr))[2]])
     
     # linear fit function
-    fun = (x, p) -> p[1] .+ x .* p[2]
+    funlin = (x, p) -> p[1] .+ x .* p[2]
+    funpow = (x, p) -> p[1] .* x .^ p[2]
     
     
     # MSD fit
-    p1 = [0.0, 1.0]
-    yfit1 = log.(sq_disp[tau])
-    fit1 = curve_fit(fun, xfit, yfit1, p1);
+    D = [NaN, NaN]
+    α = [NaN, NaN]
+    try
+        #p1 = [log.(2*dim*Dself), 1.0]
+        #fit1 = curve_fit(funlin, xfit1, yfit1, p1);
 
-    Est = fit1.param
-    Cov = estimate_covar(fit1)
+        #Est1 = fit1.param
+        #Cov1 = estimate_covar(fit1)
 
-    D = [exp(Est[1]), exp(Est[1])*sqrt(Cov[1,1])] ./4 # div by 4 b/c in 2 dims, x^2~4Dt and both x and t are measured in units of a=δt=1
-    α = [Est[2], sqrt(Cov[2,2])]
+        #D = [exp(Est1[1]), exp(Est1[1])*sqrt(Cov1[1,1])]
+        #α = [Est1[2], sqrt(Cov1[2,2])]
+        
+        p1 = [2*dim*Dself, 1.0]
+        fit1 = curve_fit(funpow, xfit1, yfit1, p1);
+
+        Est1 = fit1.param
+        Cov1 = estimate_covar(fit1)
+
+        D = [Est1[1], sqrt(Cov1[1,1])]
+        α = [Est1[2], sqrt(Cov1[2,2])]
+        
+        D ./= 2 * dim
+    catch e
+        print(e, "\n")
+    end
     
     # DirrCorr fit
-    #p2 = [2.0, 1.0] # 2 b/c in 2D
-    #yfit2 = log.(abs.(step_corr[tau]))
-    #fit2 = curve_fit(fun, xfit, yfit2, p2);
-
-    #Est = fit2.param
-    #Cov = estimate_covar(fit2)
-
-    #C = [-Est[1], Cov[1,1]]
-    #γ = [Est[2], Cov[2,2]]
     C = [NaN, NaN]
     γ = [NaN, NaN]
+    try
+        #p2 = [log.(dim*Dself), -1.0]
+        #fit2 = curve_fit(funlin, xfit2, yfit2, p2);
+        
+        #Est2 = fit2.param
+        #Cov2 = estimate_covar(fit2)
+
+        #C = [exp(Est2[1]), exp(Est2[1])*sqrt(Cov2[1,1])]
+        #γ = [Est2[2], Cov2[2,2]]
+        
+        p2 = [dim*Dself, -1.0]
+        fit2 = curve_fit(funpow, xfit2, yfit2, p2);
+        
+        Est2 = fit2.param
+        Cov2 = estimate_covar(fit2)
+
+        C = [Est2[1], Cov2[1,1]]
+        γ = [Est2[2], Cov2[2,2]]
+        
+        C ./= dim
+    catch e
+        print(e, "\n")
+    end
     
-    return D, α, C, γ, sq_disp, step_corr
+    
+    MSD = zeros(T)
+    VACF = zeros(T-1)
+    for h in valid_histories
+        MSD += Msd(x[h])
+        VACF += DirrCorr(δ[h])
+    end
+    MSD ./= length(valid_histories)
+    VACF ./= length(valid_histories)
+    
+    
+    return D, α, C, γ, MSD, VACF
 end
 
 # ### Overall analysis routine
@@ -460,17 +517,17 @@ end
     γ = zeros(2, M, length(𝒽))
     MSD = zeros(runtime+1, M, length(𝒽))
     DirrCorr = zeros(runtime, M, length(𝒽))
-
+    
     for n in ns
         i,t = divrem(n-1,M) .+ (1,1)
 
-        D[:,t,i]    = results[n][1]
-        α[:,t,i]    = results[n][2]
-        C[:,t,i]    = results[n][3]
-        γ[:,t,i]    = results[n][4]
-        MSD[:,t,i] = results[n][5]
+        D[:,t,i]        = results[n][1]
+        α[:,t,i]        = results[n][2]
+        C[:,t,i]        = results[n][3]
+        γ[:,t,i]        = results[n][4]
+        MSD[:,t,i]      = results[n][5]
         DirrCorr[:,t,i] = results[n][6]
     end
-
+    
     return D, α, C, γ, MSD, DirrCorr
 end

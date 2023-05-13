@@ -56,11 +56,17 @@ end
 @everywhere function DemonKubo(vertices, edges, runtime, 𝒽)
     
     J = zeros(Float64, (length(vertices[1].x), runtime))
-    D = zeros(Float64, (runtime))
+    D = zeros(Float64, (runtime+1))
     E = zeros(Float64, (runtime+1)) # just set zero of energy to 0 since we'll only use the variance
+    
+    # set initial demon energies
+    for edge in edges
+        D[1] += edge.D
+    end
     
     for t in 1:runtime
         E[t+1] = E[t]
+        D[t+1] = D[t]
         for _ in edges
             β = rand(eachindex(edges))
             ΔE = ΔE_flip(vertices, edges, β, 𝒽)
@@ -69,9 +75,10 @@ end
                 Δj_β = Δj_flip(vertices, edges, β)
                 
                 edges[β].σ = !edges[β].σ
+                edges[β].D -= ΔE
                 
                 E[t+1] += ΔE
-                edges[β].D -= ΔE
+                D[t+1] -= ΔE
                 
                 # update current
                 r_β = vertices[edges[β].∂[1]].x - vertices[edges[β].∂[2]].x
@@ -82,15 +89,11 @@ end
                 J[:,t] += r_β * Δj_β # note no factor of 1/2 b/c only sum each edge once
             end
         end
-        
-        # update demon energies
-        for α in eachindex(edges)
-            D[t] += edges[α].D
-        end
-        D[t] /= length(edges)
     end
     
-    return J, D, E[2:end]
+    D ./= length(edges)
+    
+    return J, D[2:end], E[2:end]
 end
 
 # ### Single Simulation Run
@@ -103,6 +106,9 @@ end
     Dfun = (T) -> δE/(exp(δE/T)-1) - g/(exp(-g/T)+1)
     Tfun = (D) -> (𝒽==0) ? δE/log(1.0 + δE/mean(D)) : find_zero((T) -> sign(T)*Dfun(abs(T)) - mean(D), (-20, 20))
     
+    #CDfun = (D) -> ((δE/Tfun(D))^2 * exp(δE/Tfun(D))/(exp(δE/Tfun(D))-1)^2 + (g/Tfun(D))^2 * exp(g/Tfun(D))/(exp(g/Tfun(D))+1)^2)
+    #C0fun = (D,E) -> Var(E) / Tfun(D)^2 / length(edges)
+    #Cfun = (D,E) -> 1/(1/C0fun(D,E) - 1/CDfun(D))
     CDfun = (D) -> length(edges) * ((δE/Tfun(D))^2 * exp(δE/Tfun(D))/(exp(δE/Tfun(D))-1)^2 + (g/Tfun(D))^2 * exp(g/Tfun(D))/(exp(g/Tfun(D))+1)^2)
     Cfun = (D,E) -> CDfun(D) * Var(E) /(CDfun(D)*Tfun(D)^2 - Var(E)) / length(edges)
     
