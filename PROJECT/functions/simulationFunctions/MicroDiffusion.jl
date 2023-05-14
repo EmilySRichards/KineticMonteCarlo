@@ -153,9 +153,9 @@ end
             ΔE = ΔE_2flip(vertices, edges, 𝜷, 𝒊, i, 𝒽)
 
             # decide whether to accept and perform the move
-            if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ && ΣA>0 # energy AND magnetisation conserved AND no pair diffusion moves (i.e. no particle at central site i)
+            #if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ && ΣA>0 # energy AND magnetisation conserved AND no pair diffusion moves (i.e. no particle at central site i)
             #if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ && ΣA<0 # energy AND magnetisation conserved AND ONLY pair diffusion moves (i.e. no particle at central site i)
-            #if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ # energy AND magnetisation conserved
+            if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ # energy AND magnetisation conserved
                 
                 edges[𝜷[1]].σ = !edges[𝜷[1]].σ
                 edges[𝜷[2]].σ = !edges[𝜷[2]].σ

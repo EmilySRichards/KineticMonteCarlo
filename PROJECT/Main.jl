@@ -45,11 +45,11 @@ t0 = now()
 
 # +
 # Hamiltonian constants
-@everywhere global const λ::Float64 = 0
-@everywhere global const ξ::Float64 = 1
+@everywhere global const λ::Float64 = 1
+@everywhere global const ξ::Float64 = 0
 
 # which dynamics to use (only affects microcanonical functions)
-@everywhere global const twoFlip::Bool = false
+@everywhere global const twoFlip::Bool = true
 
 # demon quantisation
 @assert (λ==1 && ξ==0) || (λ==0 && ξ==1) # otherwise demons will break b/c not quantised
@@ -61,7 +61,7 @@ t0 = now()
 
 # +
 # chosen basis
-@everywhere Basis = CubicBasis(2) # HexBasis() # DiamondBasis()
+@everywhere Basis = HexBasis() # CubicBasis(2) # HexBasis() # DiamondBasis()
 
 # coordination number of lattice (ASSERTED CONSTANT FOR OUR PURPOSES)
 @everywhere z = Coordination(Basis)
@@ -100,10 +100,10 @@ end
 # ### Testing Data Structure
 
 # +
-TestBasis = CubicBasis(2)
-vertices, edges = LatticeGrid([5, 5], [false, false], TestBasis)
+TestBasis = HexBasis()
+vertices, edges = LatticeGrid([4, 6], [false, false], TestBasis)
 
-GroundState!(vertices, edges, true)
+GroundState!(vertices, edges, false)
 
 Lvertices, Ledges = LineGraph(vertices, edges);
 
@@ -114,7 +114,7 @@ for e in edges
     r2 = vertices[e.∂[2]].x
     
     if length(TestBasis[4]) == 2
-        plot([r1[1]; r2[1]], [r1[2]; r2[2]], color=(e.σ ? :red : :blue), zorder=1)
+        plot([r1[1]; r2[1]], [r1[2]; r2[2]], color=:black, zorder=1)
     else
         plot3D([r1[1]; r2[1]], [r1[2]; r2[2]], [r1[3]; r2[3]], color=(e.σ ? :red : :blue), zorder=1) 
     end
@@ -133,9 +133,9 @@ for e in Ledges
     r2 = Lvertices[e.∂[2]].x
     
     if length(TestBasis[4]) == 2
-        plot([r1[1]; r2[1]], [r1[2]; r2[2]], color=:grey, zorder=2, "--") 
+        plot([r1[1]; r2[1]], [r1[2]; r2[2]], color=:gray, zorder=2, "--") 
     else
-        plot3D([r1[1]; r2[1]], [r1[2]; r2[2]], [r1[3]; r2[3]], color=:grey, zorder=1, "--") 
+        plot3D([r1[1]; r2[1]], [r1[2]; r2[2]], [r1[3]; r2[3]], color=:gray, zorder=1, "--") 
     end
     #
 end
@@ -147,6 +147,9 @@ for v in Lvertices
         scatter3D(v.x[1], v.x[2], v.x[3], color=(v.σ ? :red : :blue), s=10, zorder=2) # color=(A(edges,v)<0 ? :yellow : :black)  
     end
 end
+
+axis("equal")
+savefig("figs/lattice.pdf")
 # -
 
 # ## Thermal Conductivity
@@ -268,7 +271,7 @@ print("\n", canonicalize(t1 - t0))
 #global testing = []
 
 # PARAMETERS
-L = [50, 50]
+L = [5, 5]
 PBC = [true, true]
 
 # find minimal representable temperature (just done for 𝒽=0 for now - MAYBE MODIFY TO PICK MAX OVER DIFF FIELDS??
@@ -280,9 +283,9 @@ T = collect(range(Tmin, Tmax, length=NumT)) # the +0.1 is a fudge factor to fix 
 
 𝒽 = [0.0] # range(0, 2, length=9)
 
-num_histories = 50
-runtime = 15000
-t_therm = 5000
+num_histories = 1
+runtime = 1500
+t_therm = 500
 t_cutoff = 100
 t_autocorr = 100
 N_blocks = -1
@@ -368,7 +371,7 @@ print(canonicalize(t2 - t1))
 
 # +
 # PARAMETERS
-L = [50, 50]
+L = [32, 32]
 PBC = [true, true]
 
 Tmin = 0.01
@@ -378,9 +381,9 @@ NumT = 50
 #Tmax *= (λ == 0 ? 1.0 : 0.5)
 T = collect(range(Tmin, Tmax, length=NumT))
 
-𝒽 = [0.0] #range(0, 2, length=7)
+𝒽 = range(0, 1, length=7)
 
-num_histories = 50
+num_histories = 25
 therm_runtime = 15000
 runtime = 15000
 t_therm = 5000
@@ -451,8 +454,8 @@ end
 
 figure()
 for n in eachindex(𝒽)
-    plot(T[2:end], Cfun(T[2:end], 𝒽[n]), color=colors[n])
-    #plot(T, HeatCapacity(T, 𝒽[n], z), "--", color=colors[n])
+    #plot(T[2:end], Cfun(T[2:end], 𝒽[n]), color=colors[n])
+    plot(T, HeatCapacity(T, 𝒽[n], z), "--", color=colors[n])
     
     plotWithError(C[:,n], T, colors[n], ".", "" , CStd[:,n])
 end
