@@ -61,7 +61,7 @@ t0 = now()
 
 # +
 # chosen basis
-@everywhere Basis = HexBasis() # CubicBasis(2) # HexBasis() # DiamondBasis()
+@everywhere Basis = CubicBasis(2) # HexBasis() # DiamondBasis()
 
 # coordination number of lattice (ASSERTED CONSTANT FOR OUR PURPOSES)
 @everywhere z = Coordination(Basis)
@@ -371,7 +371,7 @@ print(canonicalize(t2 - t1))
 
 # +
 # PARAMETERS
-L = [32, 32]
+L = [5, 5]
 PBC = [true, true]
 
 Tmin = 0.01
@@ -383,10 +383,10 @@ T = collect(range(Tmin, Tmax, length=NumT))
 
 𝒽 = range(0, 1, length=7)
 
-num_histories = 25
-therm_runtime = 15000
-runtime = 15000
-t_therm = 5000
+num_histories = 1
+therm_runtime = 1500
+runtime = 1500
+t_therm = 500
 t_autocorr = 100
 N_blocks = -1
 t_cutoff = 100
@@ -526,10 +526,10 @@ therm_runtime = floor(Int64,(maximum(L)./2)^2/2/length(L)/Dself) # 500
 runtime = 1000
 tau = 2:100
 num_histories = 1
-𝒽 = [0.0] #range(0, 2, length=5)
+𝒽 = range(0, 1, length=7)
 
-T = []; # collect(range(0.01, 10.0, length=20));
-ℓ = ones(1);
+T = [0.25]; #collect(range(0.01, 10.0, length=20));
+ℓ = []; #ones(1);
 
 
 x, δ, Mag, Perc, p, Nv = DiffSim(L, PBC, Basis, therm_runtime, runtime, ℓ, T, 𝒽);
@@ -696,7 +696,8 @@ save("data/MicroDiff.jld", "Size", L,
                            "D", D,
                            "alpha", α,
                            "C", C,
-                           "gamma", γ)
+                           "gamma", γ,
+                           "trajectories", x)
 
 t4 = now()
 print("\n", canonicalize(t4 - t3))
