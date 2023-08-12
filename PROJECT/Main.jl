@@ -43,13 +43,13 @@ t0 = now()
 
 # ### Energy Scales
 
-# +
+# + tags=[]
 # Hamiltonian constants
-@everywhere global const λ::Float64 = 1
-@everywhere global const ξ::Float64 = 0
+@everywhere global const λ::Float64 = 0
+@everywhere global const ξ::Float64 = 1
 
 # which dynamics to use (only affects microcanonical functions)
-@everywhere global const twoFlip::Bool = true
+@everywhere global const twoFlip::Bool = false
 
 # demon quantisation
 @assert (λ==1 && ξ==0) || (λ==0 && ξ==1) # otherwise demons will break b/c not quantised
@@ -61,14 +61,14 @@ t0 = now()
 
 # +
 # chosen basis
-@everywhere Basis = CubicBasis(2) # HexBasis() # DiamondBasis()
+@everywhere Basis = SquareBasis() # HexBasis() # DiamondBasis() # CubicBasis(2) # 
 
 # coordination number of lattice (ASSERTED CONSTANT FOR OUR PURPOSES)
 @everywhere z = Coordination(Basis)
 
 # function to generate groundstate
 @everywhere isDiamond = (z==4 && length(Basis[4])==3) # certainly not general, but avoids human error in me setting the ground state explicitly...
-@everywhere GroundState!(vertices, edges) = GroundState!(vertices, edges, isDiamond)
+@everywhere GroundState!(cells) = GroundState!(cells, isDiamond)
 
 # +
 # Approxn of self-diffusion coeff at zero density
@@ -100,8 +100,13 @@ end
 # ### Testing Data Structure
 
 # +
-TestBasis = HexBasis()
-vertices, edges = LatticeGrid([4, 6], [false, false], TestBasis)
+TestBasis = SquareBasis()
+L = [3, 3]
+PBC = [false, false]
+
+cells, _ = LatticeGrid(L, PBC, TestBasis)
+vertices = cells[1]
+edges = cells[2]
 
 GroundState!(vertices, edges, false)
 
@@ -151,6 +156,14 @@ end
 axis("equal")
 savefig("figs/lattice.pdf")
 # -
+
+for edge in cells[3]
+    print(edge.x, ":   ")
+    for i in edge.∂
+        print(cells[2][i].x, "  ")
+    end
+    print("\n\n")
+end
 
 # ## Thermal Conductivity
 
@@ -381,7 +394,7 @@ NumT = 50
 #Tmax *= (λ == 0 ? 1.0 : 0.5)
 T = collect(range(Tmin, Tmax, length=NumT))
 
-𝒽 = range(0, 1, length=7)
+𝒽 = 0.0 #range(0, 1, length=7)
 
 num_histories = 1
 therm_runtime = 1500
@@ -525,11 +538,11 @@ PBC = [true, true]
 therm_runtime = floor(Int64,(maximum(L)./2)^2/2/length(L)/Dself) # 500
 runtime = 1000
 tau = 2:100
-num_histories = 1
-𝒽 = range(0, 1, length=7)
+num_histories = 200
+𝒽 = [0.0] #range(0, 1, length=7)
 
-T = [0.25]; #collect(range(0.01, 10.0, length=20));
-ℓ = []; #ones(1);
+T = []; # collect(range(0.01, 10.0, length=50));
+ℓ = [1];
 
 
 x, δ, Mag, Perc, p, Nv = DiffSim(L, PBC, Basis, therm_runtime, runtime, ℓ, T, 𝒽);
@@ -542,7 +555,7 @@ for h in 1:length(x[1][1])
         plot(x[1][1][h][1,p,:], x[1][1][h][2,p,:])
     end
 end
-savefig("figs/trajectories.png")
+savefig("figs/trajectories.pdf")
 
 colors = jetmap(length(𝒽))
 
@@ -696,8 +709,7 @@ save("data/MicroDiff.jld", "Size", L,
                            "D", D,
                            "alpha", α,
                            "C", C,
-                           "gamma", γ,
-                           "trajectories", x)
+                           "gamma", γ)
 
 t4 = now()
 print("\n", canonicalize(t4 - t3))

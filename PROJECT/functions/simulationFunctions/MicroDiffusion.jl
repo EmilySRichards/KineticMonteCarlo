@@ -16,12 +16,15 @@
 
 # ### Set up the geometry
 
-@everywhere function MicroDiffnSetup(vertices, edges, numToFlip)
+@everywhere function MicroDiffnSetup(cells, numToFlip)
+    vertices = cells[1]
+    edges = cells[2]
+    
     # initialise entire system in ground state
-    GroundState!(vertices, edges)
+    GroundState!(cells)
     
     # flip numEdges random spins
-    valid_edges = collect(eachindex(edges))
+    valid_edges = collect(eachindex(cells[2]))
     flipped_edges = []
     
     for n in 1:numToFlip
@@ -35,7 +38,7 @@
         
         # remove α AND other edges which share vertices with it
         deleteat!(valid_edges, findall(valid_edges.==α))
-        for i in edges[α].∂
+        for i in cells[2][α].∂
             for β in vertices[i].δ
                 deleteat!(valid_edges, findall(valid_edges.==β))
             end                
@@ -43,7 +46,7 @@
     end
 
     for α in flipped_edges
-        edges[α].σ = !edges[α].σ
+        cells[2][α].σ = !cells[2][α].σ
     end
 end
 
@@ -63,6 +66,7 @@ end
             push!(js, j)
         end
     end
+
     
     xs = zeros(dim, length(js), runtime+1)
     δs = zeros(dim, length(js), runtime)
@@ -112,6 +116,98 @@ end
     return xs, δs
 end
 
+# ### Single spin-flip dynamics routine WITH PLAQUETTE FLIPS
+
+@everywhere function MicroDiffn_plaqs(vertices, edges, faces, runtime, 𝒽, allowBckgdMoves)
+    
+    dim = length(vertices[1].x)
+    
+    # find all the excitations
+    js = []
+    for j in eachindex(vertices)
+        Aj = A(edges, vertices[j])
+        Qj = abs(Q(edges, vertices[j]))
+        
+        if (isSpinIce ? (Qj == 3 || Qj == 2) : Aj == -1)
+            push!(js, j)
+        end
+    end
+    
+    xs = zeros(dim, length(js), runtime+1)
+    δs = zeros(dim, length(js), runtime)
+    for n in eachindex(js)
+        xs[:,n,1] = vertices[js[n]].x
+    end
+    
+    # actual simulation
+    for t in 1:runtime
+        xs[:,:,t+1] = xs[:,:,t]
+        
+        for _ in edges
+            
+            β = rand(eachindex(edges)) # pick a random edge
+            
+            ΔE = ΔE_flip(vertices, edges, β, 𝒽)
+
+            j1 = edges[β].∂[1]
+            j2 = edges[β].∂[2]
+            
+            # try to move a particle
+            if ΔE == 0 && (allowBckgdMoves || (j1 in js || j2 in js))
+
+                edges[β].σ = !edges[β].σ
+
+                # displacement of edge (fixed to account for PBCs)
+                Δ = vertices[j2].x - vertices[j1].x
+                for d in 1:length(Δ)
+                    Δ[d] /= (abs(Δ[d])>1) ? -abs(Δ[d]) : 1 # note MINUS abs to ensure orientation is right (i.e. Δ>0 if going from RHS to LHS)
+                end
+
+                # if a prtcl is linked to this edge, move it - note ΔE=/=0 if prtcl on both vertices => ignore this case
+                n1 = findfirst(js.==j1)
+                n2 = findfirst(js.==j2)
+                if n1!=nothing     # j1 = js[n1] = excitation
+                    js[n1] = j2
+                    xs[:,n1,t+1] += Δ # = vertices[j2].x # 
+                    δs[:,n1,t] += Δ
+                elseif n2!=nothing # j2 = js[n2] = excitation
+                    js[n2] = j1
+                    xs[:,n2,t+1] -= Δ # = vertices[j1].x # 
+                    δs[:,n2,t] -= Δ
+                end
+            
+            # if no zero energy move, try a background plaquette flip
+            else    
+                p = rand(eachindex(faces)) # pick a random plaquette
+
+                # if plaquette has an odd number of edges, it's immediately not flippable
+                flippable = (length(faces[p].∂) % 2 == 0) ? true : false
+                sum = 0
+                if  flippable # if an even plaquette, check the edges have alternating edges => flippable
+                    for α in faces[p].∂ 
+                        sum += (-1)^edges[α].σ
+
+                        if abs(sum) > 1
+                            flippable = false
+                        end
+                    end
+                end
+
+                if flippable
+                    for α in faces[p].∂ # flip all edges on plaquette
+                        edges[α].σ = !edges[α].σ
+                    end
+                end
+                
+                # either way, no particles move => no need to update any of xs, js or δs
+                
+            end
+        end
+    end
+    
+    return xs, δs
+end
+
 # ### Double spin-flip dynamics routine 
 
 @everywhere function MicroDiffn_2flip(vertices, edges, runtime, 𝒽)
@@ -153,9 +249,9 @@ end
             ΔE = ΔE_2flip(vertices, edges, 𝜷, 𝒊, i, 𝒽)
 
             # decide whether to accept and perform the move
-            #if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ && ΣA>0 # energy AND magnetisation conserved AND no pair diffusion moves (i.e. no particle at central site i)
+            if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ && ΣA>0 # energy AND magnetisation conserved AND no pair diffusion moves (i.e. no particle at central site i)
             #if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ && ΣA<0 # energy AND magnetisation conserved AND ONLY pair diffusion moves (i.e. no particle at central site i)
-            if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ # energy AND magnetisation conserved
+            #if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ # energy AND magnetisation conserved
                 
                 edges[𝜷[1]].σ = !edges[𝜷[1]].σ
                 edges[𝜷[2]].σ = !edges[𝜷[2]].σ
@@ -269,18 +365,22 @@ end
 
 # ### Single diffusion routine
 
-@everywhere function DiffSimSingle(vertices, edges, therm_runtime, runtime, useT, ℓorT, 𝒽)
+@everywhere function DiffSimSingle(cells, therm_runtime, runtime, useT, ℓorT, 𝒽)
+    vertices = cells[1]
+    edges = cells[2]
+    faces = cells[3]
     
     # thermalise to correct temperature OR correct number of particles
     if useT
         MicroKuboSetup(vertices, edges, therm_runtime, ℓorT, 𝒽, false)
     else
-        MicroDiffnSetup(vertices, edges, ℓorT)
+        MicroDiffnSetup(cells, ℓorT)
         
         if twoFlip # allow particles to separate before we start tracking them!
             MicroDiffn_2flip(vertices, edges, therm_runtime, 𝒽)
         else
-            MicroDiffn(vertices, edges, therm_runtime, 𝒽, true)
+            #MicroDiffn(vertices, edges, therm_runtime, 𝒽, true)
+            MicroDiffn_plaqs(vertices, edges, faces, therm_runtime, 𝒽, true)
         end
     end
     
@@ -309,7 +409,8 @@ end
     if twoFlip
         x, δ = MicroDiffn_2flip(vertices, edges, runtime, 𝒽)
     else
-        x, δ = MicroDiffn(vertices, edges, runtime, 𝒽, true)
+        #x, δ = MicroDiffn(vertices, edges, runtime, 𝒽, true)
+        x, δ = MicroDiffn_plaqs(vertices, edges, faces, runtime, 𝒽, true)
     end
     
     return x, δ, M, ℙ
@@ -324,7 +425,7 @@ end
 @everywhere function DiffSim(L, PBC, Basis, therm_runtime, runtime, ℓ, T, 𝒽)
     
     # set up lattice
-    vertices, edges, scale = LatticeGrid(L, PBC, Basis);
+    cells, scale = LatticeGrid(L, PBC, Basis);
     
     useT = length(T)>0
     if !useT
@@ -335,9 +436,9 @@ end
     ns = 1:num_histories*length(𝒽)*M
     
     if useT
-        args = [[deepcopy(vertices), deepcopy(edges), therm_runtime, runtime, useT, T[rem(n-1,M)+1], 𝒽[rem(div(n-1,M),length(𝒽))+1]] for n in ns]
+        args = [[deepcopy(cells), therm_runtime, runtime, useT, T[rem(n-1,M)+1], 𝒽[rem(div(n-1,M),length(𝒽))+1]] for n in ns]
     else
-        args = [[deepcopy(vertices), deepcopy(edges), therm_runtime, runtime, useT, ℓ[rem(n-1,M)+1], 𝒽[rem(div(n-1,M),length(𝒽))+1]] for n in ns]
+        args = [[deepcopy(cells), therm_runtime, runtime, useT, ℓ[rem(n-1,M)+1], 𝒽[rem(div(n-1,M),length(𝒽))+1]] for n in ns]
     end
 
     if multiProcess

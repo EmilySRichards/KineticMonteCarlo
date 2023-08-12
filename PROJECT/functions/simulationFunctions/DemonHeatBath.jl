@@ -298,14 +298,16 @@ end
 function BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, runtime, t_therm, t_autocorr, N_blocks, 𝒽)
     
     # set up graph and demarcate baths and strips
-    vertices, edges, Scale = LatticeGrid(L, PBC, Basis);
+    cells, Scale = LatticeGrid(L, PBC, Basis);
+    vertices = cells[1]
+    edges = cells[2]
     Length = L[1]*Scale[1] # length of sample
     Area = prod(L[2:end])*prod(Scale[2:end]) # cross-sectional area of sample
     
     Bh_j, Bc_j, Bh_α, Bc_α, strips = BathSetup(vertices, edges, L[1], Scale[1], W)
     
     # initialise spins in ground state
-    GroundState!(vertices, edges)
+    GroundState!(cells)
     
     ks = range(1,2*length(𝒽)*num_histories)
     Hs = [num_histories for k=ks]

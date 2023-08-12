@@ -1,15 +1,13 @@
 # ### Coordination from basis
 @everywhere function Coordination(Basis)
     Vs  = Basis[1]
-    Es  = Basis[2]
-    Bev = Basis[3]
+    Es  = Basis[2][1]
     
     count = zeros(Int64, length(Vs))
-    for i in eachindex(Vs)
-        count[i] += length(Vs[i].δ)
+    for edge in Es
         
-        for be in Bev # don't forget to count dangling edges that have yet to be linked up!
-            count[i] += (be[1][2] == i) ? 1 : 0
+        for vertex in edge
+            count[vertex[1]] += 1
         end
     end
     
@@ -21,116 +19,151 @@ end
 # ### Different Unit Cells
 
 @everywhere function CubicBasis(dim)
-    Nv = 1
-    Ne = dim
+    n = [binomial(dim, 1) for d in 1:2] # ONLY UP TO EDGES FOR NOW!!!!
     
-    Vs = [Cell(false, 0, [], [], []) for j in 1:Nv]
-    Es = [Cell(false, 0, [], [], []) for α in 1:Ne]
+    Verts = [Cell(false, 0, [], [], []) for j in 1:n[1]]
+    Verts[1].x = zeros(dim)
+
+    Links = [] # all >0-dim cells
     
-    Vs[1].x = zeros(dim)
-    
-    Bev = []
+    # edges
+    Edges = []
     for d in 1:dim
-        push!(Es[d].∂, 1)
-        push!(Vs[1].δ, d)
         dir = zeros(dim)
         dir[d] = 1
-        push!(Bev, [(d, 1), dir])
+        
+        push!(Edges, [(1, zeros(dim)), (1, dir)])
     end
+    push!(Links, Edges)
     
     Scale = ones(dim) # scale of the unit cell dimensions
     
-    return Vs, Es, Bev, Scale
+    return Verts, Links, n, Scale
 end
 
 
 
+@everywhere function SquareBasis()
+    n = [1, 2, 1]
+    
+    Verts = [Cell(false, 0, [], [], []) for j in 1:n[1]]
+    Verts[1].x = zeros(2)
+
+    Links = [] # all >0-dim cells
+    
+    # edges
+    push!(Links, [[(1, [0 0]), (1, [1 0])],
+                  [(1, [0 0]), (1, [0 1])]])
+    
+    # faces
+    push!(Links, [[(1, [0 0]), (2, [1 0]), (1, [0 1]), (2, [0 0])]])
+    
+    
+    Scale = ones(2) # scale of the unit cell dimensions
+    
+    return Verts, Links, n, Scale
+end
+
+
 
 function HexBasis()
-    Nv = 4
-    Ne = 6
+    # number of vertices, edges, faces, ...
+    n = [4, 6, 2]
     
-    Vs = [Cell(false, 0, [], [], []) for j in 1:Nv]
-    Es = [Cell(false, 0, [], [], []) for α in 1:Ne]
+    Verts = [Cell(false, 0, [], [], []) for j in 1:n[1]]
     
-    Vs[1].x = [0  , 0  ]
-    Vs[2].x = [1/6, 1/2]
-    Vs[3].x = [1/2, 1/2]
-    Vs[4].x = [2/3, 0  ]
+    Verts[1].x = [0  , 0  ]
+    Verts[2].x = [1/6, 1/2]
+    Verts[3].x = [1/2, 1/2]
+    Verts[4].x = [2/3, 0  ]
     
-    tmp = [(1, 1), (1, 2), (2, 2), (3, 2), (3, 3), (4, 3), (5, 3), (5, 4), (6, 4)] # list of links (edge then vertex)
+    Links = [] # all >0-dim cells
     
-    for t in tmp
-        push!(Es[t[1]].∂, t[2])
-        push!(Vs[t[2]].δ, t[1])
-    end
+    # edges
+    push!(Links, [[(1, [0 0]), (2, [0 0])],
+                  [(2, [0 0]), (3, [0 0])],
+                  [(3, [0 0]), (4, [0 0])],
+                  [(4, [0 0]), (1, [1 0])],
+                  [(3, [0 0]), (4, [0 1])],
+                  [(2, [0 0]), (1, [0 1])]])
     
-    Bev = [[(6, 1), [1 0]], [(2, 1), [0 1]], [(4, 4), [0 1]]] # dangling edge -> vertex bonds
+    # faces
+    push!(Links, [[(6, [0 0]), (2, [0 0]), (5, [0 0]), (3, [0 1]), (2, [0 1]), (1, [0 1])],
+                  [(3, [0 0]), (4, [0 0]), (1, [1 0]), (6, [1 0]), (4, [0 1]), (5, [0 0])]])
     
     Scale = [3, sqrt(3)] # scale of the unit cell dimensions (such that bond length = 1)
     
-    return Vs, Es, Bev, Scale
+    return Verts, Links, n, Scale
 end
 
 
 
 
 @everywhere function DiamondBasis()
-    Nv = 8
-    Ne = 16
+    # number of vertices, edges, faces, ...
+    n = [8, 16]
     
-    Vs = [Cell(false, 0, [], [], []) for j in 1:Nv]
-    Es = [Cell(false, 0, [], [], []) for α in 1:Ne]
+    Verts = [Cell(false, 0, [], [], []) for j in 1:n[1]]
     
-    Vs[1].x = [0,   0,   0  ]
-    Vs[2].x = [1/4, 1/4, 1/4]
-    Vs[3].x = [1/2, 1/2, 0  ]
-    Vs[4].x = [1/2, 0  , 1/2]
-    Vs[5].x = [0,   1/2, 1/2]
-    Vs[6].x = [3/4, 3/4, 1/4]
-    Vs[7].x = [3/4, 1/4, 3/4]
-    Vs[8].x = [1/4, 3/4, 3/4]
+    Verts[1].x = [0,   0,   0  ]
+    Verts[2].x = [1/4, 1/4, 1/4]
+    Verts[3].x = [1/2, 1/2, 0  ]
+    Verts[4].x = [1/2, 0  , 1/2]
+    Verts[5].x = [0,   1/2, 1/2]
+    Verts[6].x = [3/4, 3/4, 1/4]
+    Verts[7].x = [3/4, 1/4, 3/4]
+    Verts[8].x = [1/4, 3/4, 3/4]
     
-    tmp = [(1, 1), (1, 2), (2, 2), (2, 3), (3, 2), (3, 4), (4, 2), (4, 5), (5, 3), (5, 6), (6, 4), (6, 7), (7, 5), (7, 8)] # list of INTERNAL links (edge then vertex)
-    append!(tmp, [(8, 6), (9, 6), (10, 6), (11, 7), (12, 7), (13, 7), (14, 8), (15, 8), (16, 8)]) # list of EXTERNAL links
+    Links = [] # all >0-dim cells
     
-    for t in tmp
-        push!(Es[t[1]].∂, t[2])
-        push!(Vs[t[2]].δ, t[1])
-    end
+    # edges
+    push!(Links, [[(1, [0 0 0]), (2, [0 0 0])],
+                  [(2, [0 0 0]), (3, [0 0 0])],
+                  [(2, [0 0 0]), (4, [0 0 0])],
+                  [(2, [0 0 0]), (5, [0 0 0])],
+                  [(3, [0 0 0]), (6, [0 0 0])],
+                  [(4, [0 0 0]), (7, [0 0 0])],
+                  [(5, [0 0 0]), (8, [0 0 0])],
+                  
+                  [(6, [0 0 0]), (1, [1 1 0])],
+                  [(6, [0 0 0]), (5, [1 0 0])],
+                  [(6, [0 0 0]), (4, [0 1 0])],
+            
+                  [(7, [0 0 0]), (5, [1 0 0])],
+                  [(7, [0 0 0]), (1, [1 0 1])],
+                  [(7, [0 0 0]), (3, [0 0 1])],
+            
+                  [(8, [0 0 0]), (4, [0 1 0])],
+                  [(8, [0 0 0]), (3, [0 0 1])],
+                  [(8, [0 0 0]), (1, [0 1 1])]])
     
-    Bev = [[(8, 1), [1 1 0]], [(9, 5), [1 0 0]], [(10, 4), [0 1 0]], [(11, 5), [1 0 0]], [(12, 1), [1 0 1]], [(13, 3), [0 0 1]], [(14, 4), [0 1 0]], [(15, 3), [0 0 1]], [(16, 1), [0 1 1]]] # dangling edge -> matching vertex
     
     Scale = ones(3) .* 4/sqrt(3) # scale of the unit cell dimensions (such that bond lengths=1)
     
-    return Vs, Es, Bev, Scale
+    return Verts, Links, n, Scale
 end
 
 
 
+function SemiTriangBasis()
+    # number of vertices, edges, faces, ...
+    n = [2, 5]
+    
+    Verts = [Cell(false, 0, [], [], []) for j in 1:n[1]]
+    
+    Verts[1].x = [0  , 0]
+    Verts[2].x = [1/2, 0]
+    
+    Links = [] # all >0-dim cells
+    
+    # edges
+    push!(Links, [[(1, [0 0]), (2, [0 0])],
+                  [(1, [0 0]), (1, [0 1])],
+                  [(1, [0 0]), (2, [0 1])],
+                  [(2, [0 0]), (2, [0 1])],
+                  [(2, [0 0]), (1, [1 0])]])
 
-function KagomeBasis()
-    Nv = 6
-    Ne = 12
+    Scale = [3, sqrt(3)] # scale of the unit cell dimensions (such that bond length = 1)
     
-    Vs = [Cell(false, 0, [], [], []) for j in 1:Nv]
-    Es = [Cell(false, 0, [], [], []) for α in 1:Ne]
-    
-    Vs[1].x = [0, 0]
-    Vs[2].x = [0.5, 0]
-    Vs[3].x = [0.25, 0.25]
-    Vs[4].x = [0, 0.5]
-    Vs[5].x = [0.5, 0.5]
-    Vs[6].x = [0.75, 0.75]
-    
-    tmp = [(1, 1), (1, 2), (2, 2), (3, 1), (3, 3), (4, 2), (4, 3), (5, 3), (5, 4), (6, 3), (6, 5), (7, 4), (7, 5), (8, 5), (9, 5), (9, 6), (10, 6), (11, 6), (12, 6)] # list of links (edge then vertex)
-    
-    for t in tmp
-        push!(Es[t[1]].∂, t[2])
-        push!(Vs[t[2]].δ, t[1])
-    end
-    
-    Bev = [[(2, 1), [1 0]], [(8, 4), [1 0]], [(10, 2), [0 1]], [(11, 1), [1 1]], [(12, 4), [1 0]]] # dangling edge -> matching vertex
-    
-    return Vs, Es, Bev
+    return Verts, Links, n, Scale
 end

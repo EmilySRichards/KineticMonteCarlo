@@ -26,34 +26,20 @@ end
 
 # ### Functions to generate an arbitary lattice with vertices (0-cells) and edges (1-cells)
 
-@everywhere function CreateCell(Vs0, Es0, I, X)
-    Vs = deepcopy(Vs0)
-    Es = deepcopy(Es0)
-    
-    for v in Vs
-        v.x += X
-        v.δ .+= length(Es)*(I-1)
-    end
-    for e in Es
-        e.∂ .+= length(Vs)*(I-1)
-    end
-    
-    return Vs, Es
-end
-
 @everywhere function LatticeGrid(L, PBC, Basis)
     
-    Vs0, Es0, Bonds, Scale = Basis
-    nv = length(Vs0)
-    ne = length(Es0)
+    Verts0, Links0, n, Scale = Basis
     
     @assert length(L)==length(PBC)
     dim = length(L)
     
     N = prod(L) # number of unit cells
     
-    vertices = [Cell(false, 0, [], [], []) for j in 1:nv*N] # list of vertices
-    edges = [Cell(false, 0, [], [], []) for α in 1:ne*N] # list of edges
+    cells = []
+    
+    for c in 1:length(Links0)+1
+        push!(cells, [Cell(false, 0, [], [], []) for _ in 1:n[c]*N])
+    end
     
     # define indexing convention
     function X_to_I(X, L)
@@ -74,88 +60,109 @@ end
     end
 
     
-    # place down all unit cells without connecting dangling edges
+    # place down all the vertices without connecting any edges/plaquettes/etc
     x0 = ones(length(L)) # origin for 1-indexing positions as done in X (just for convenience because Julia)
     for I in 1:N
         X = I_to_X(I, L) - x0 # don't forget to subtract the origin!
-        Vs, Es = CreateCell(Vs0, Es0, I, X)
         
-        vertices[nv*(I-1)+1:nv*I] .= Vs
-        edges[ne*(I-1)+1:ne*I] .= Es
-    end
-        
-    # go back through and link up dangling edges vertices and edges arrays
-    for I in 1:N
-        X = I_to_X(I, L)
-        
-        # attach edges (in +ve quadrant)
-        for Bond in Bonds
-            dir = Bond[2] # relative displacement of linked cell, each a vector ∈ {0,±1}
-            ev = Bond[1] # tuple of the edge and the vertex to be linked (within a unit cell)
-            
-            ifLink = true
-            for d in 1:dim # if at a boundary and OBCs then don't link up the edge
-                if dir[d]<0 && X[d]==1 && !PBC[d]
-                    ifLink = false
-                elseif dir[d]>0 && X[d]==L[d] && !PBC[d]
-                    ifLink = false
-                end
-            end
-            
-            if ifLink
-                Y = copy(X)
-                for d in 1:dim
-                    Y[d] = (dir[d]<0 && X[d]==1) ? L[d] : ((dir[d]>0 && X[d]==L[d]) ? 1 : X[d]+dir[d])
-                end
-                J = X_to_I(Y, L)
-                
-                push!(edges[ev[1]+ne*(I-1)].∂, ev[2]+nv*(J-1))
-                push!(vertices[ev[2]+nv*(J-1)].δ, ev[1]+ne*(I-1))
-            end
+        for i in 1:n[1]
+            𝐢 = n[1]*(I-1)+i # absolute index
+            cells[1][𝐢].x = Verts0[i].x .+ X
         end
     end
     
-    # if there are any remaining dangling edges, they must be on an OBC => kill them
-    if !all(PBC)
-        toKill = []
-        shifts = zeros(length(edges))
-        for α in eachindex(edges)
-            if length(edges[α].∂) < 2
-                push!(toKill, α)
-                shifts[α:end] .-= 1
+    # for later
+    cellsToKill = [[] for _ in 1:length(cells)]
+    cellShifts = [zeros(length(cells[c])) for c in 1:length(cells)]
+    
+    # go back through and link up the hyperedges in order of dimension
+    for c in 2:length(cells)
+        
+        for I in 1:N # for each unit cell
+            X = I_to_X(I, L)
+
+            # attach hyperedges (in +ve quadrant)
+            for α in 1:n[c]
+                𝛂 = n[c]*(I-1) + α # absolute index of the relevant hyperedge
+
+                # if hyperedge crosses an OBC then don't link it up at all
+                ifLink = true
+                for hypervertex in Links0[c-1][α]
+                    dir = hypervertex[2]
+                    for d in 1:dim 
+                        if dir[d]<0 && X[d]==1 && !PBC[d]
+                            ifLink = false
+                        elseif dir[d]>0 && X[d]==L[d] && !PBC[d]
+                            ifLink = false
+                        end
+                    end
+                end
+
+                if ifLink # if NOT crossing an OBC, link up this hyperedge
+                    for hypervertex in Links0[c-1][α]
+                        dir = hypervertex[2]
+
+                        Y = copy(X)
+                        for d in 1:dim
+                            Y[d] = (dir[d]<0 && X[d]==1) ? L[d] : ((dir[d]>0 && X[d]==L[d]) ? 1 : X[d]+dir[d])
+                        end
+                        J = X_to_I(Y, L) # cell index of the relevant hypervertex
+                        𝐣 = hypervertex[1] + n[c-1]*(J-1) # absolute index of the relevant hypervertex 
+
+                        # update the relevant boundary and coboundary lists
+                        push!(cells[c][𝛂].∂, 𝐣)
+                        push!(cells[c-1][𝐣].δ, 𝛂)
+                    end
+                else # if it IS crossing an OBC, mark the hyperedge for deletion after whole complex is constructed
+                    push!(cellsToKill[c], 𝛂)
+                    cellShifts[c][𝛂:end] .-= 1
+                end
+            end
+        end
+    end    
+    
+    
+    # kill off hyperedges crossing OBCs and shift indices to compensate in order of dimension
+    for c in 2:length(cells)
+
+        deleteat!(cells[c], cellsToKill[c])
+
+        # fix the hyperedge indices in the coboundary of each hypervertex
+        for v in cells[c-1]
+            for i in eachindex(v.δ)
+                v.δ[i] += cellShifts[c][v.δ[i]]
             end
         end
         
-        deleteat!(edges, toKill)
-
-        # fix the edges in the coboundary of each vertex
-        for v in vertices
-            toKillv = []
-            for i in eachindex(v.δ)
-                if v.δ[i] in toKill
-                    push!(toKillv, i)
+        # fix the hyperedge indices in the boundary of each hyperface
+        if c < length(cells)
+            for v in cells[c+1]
+                for i in eachindex(v.∂)
+                    v.∂[i] += cellShifts[c][v.∂[i]]
                 end
-                v.δ[i] += shifts[v.δ[i]]
             end
-            deleteat!(v.δ, toKillv)
         end
+        
     end
+    
     
     # rescale vertex positions
-    for v in vertices
-        v.x = v.x .* Scale
+    for v in cells[1]
+        v.x .*= Scale
     end
     
-    # calculate edge positions from vertex positions
-    for e in edges
-        e.x = zeros(length(L))
-        for i in e.∂
-            e.x += vertices[i].x
+    # iteratively assign hyperedge positions from hypervertex positions in order of dimension
+    for c in 2:length(cells)
+        for e in cells[c]
+            e.x = zeros(length(L))
+            for i in e.∂
+                e.x += cells[c-1][i].x
+            end
+            e.x ./= length(e.∂)
         end
-        e.x ./= length(e.∂)
     end
     
-    return vertices, edges, Scale
+    return cells, Scale
 end
 
 

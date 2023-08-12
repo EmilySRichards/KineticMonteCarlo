@@ -16,14 +16,16 @@
 
 # ### Set up the geometry
 
-@everywhere function MicroKuboSetup(vertices, edges, therm_runtime, T, 𝒽, isRandom)
+@everywhere function MicroKuboSetup(cells, therm_runtime, T, 𝒽, isRandom)
+    vertices = cells[1]
+    edges = cells[2]
     
     if isRandom # initialise entire system in random state
         for edge in edges
             edge.σ = rand(Bool)
         end
     else # initialise entire system in ground state
-        GroundState!(vertices, edges)
+        GroundState!(cells)
     end
     
     E = zeros(therm_runtime+1) # just set initial energy to zero since we only need the variance
@@ -47,14 +49,16 @@ end
 
 # ### Set up the geometry - with magnetisation-conserving stage
 
-@everywhere function MicroKuboSetup_2flip(vertices, edges, therm_runtime, T, 𝒽, isRandom)
+@everywhere function MicroKuboSetup_2flip(cells, therm_runtime, T, 𝒽, isRandom)
+    vertices = cells[1]
+    edges = cells[2]
     
     if isRandom # initialise entire system in random state
         for edge in edges
             edge.σ = rand(Bool)
         end
     else # initialise entire system in ground state
-        GroundState!(vertices, edges)
+        GroundState!(cells)
     end
 
     
@@ -206,7 +210,9 @@ end
 
 # ### Single Simulation Run
 
-@everywhere function MKuboSingle(vertices, edges, scale, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽, allComponents)
+@everywhere function MKuboSingle(cells, scale, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽, allComponents)
+    vertices = cells[1]
+    edges = cells[2]
     
     Cfun = (E) -> var(E) / T^2 / length(edges)
     κfun = (S) -> mean(S) / T^2 / length(edges)
@@ -216,9 +222,9 @@ end
     
     # -- 0. Run Simulation --
     #if twoFlip
-    #    E = MicroKuboSetup_2flip(vertices, edges, therm_runtime, T, 𝒽, false)
+    #    E = MicroKuboSetup_2flip(cells, therm_runtime, T, 𝒽, false)
     #else
-    E = MicroKuboSetup(vertices, edges, therm_runtime, T, 𝒽, false)
+    E = MicroKuboSetup(cells, therm_runtime, T, 𝒽, false)
     #end
         
     M = 0
@@ -333,10 +339,10 @@ end
 
 function MKuboSimulation(L, PBC, Basis, num_histories, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽, allComponents)
     
-    vertices, edges, scale = LatticeGrid(L, PBC, Basis)
+    cells, scale = LatticeGrid(L, PBC, Basis)
     
     ks = range(1,length(T)*length(𝒽)*num_histories)
-    args = [[deepcopy(vertices), deepcopy(edges), scale, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T[div(div(k-1,num_histories),length(𝒽))+1], 𝒽[rem(div(k-1,num_histories),length(𝒽))+1], allComponents] for k=ks]
+    args = [[deepcopy(cells), scale, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T[div(div(k-1,num_histories),length(𝒽))+1], 𝒽[rem(div(k-1,num_histories),length(𝒽))+1], allComponents] for k=ks]
     
     function hfun(args)
         return MKuboSingle(args...)

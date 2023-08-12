@@ -16,10 +16,10 @@
 
 # ### Ground State Function
 
-@everywhere function GroundState!(vertices, edges, isPyrochlore)
+@everywhere function GroundState!(cells, isPyrochlore)
     
     if !isSpinIce # ANY toric code
-        for e in edges
+        for e in cells[2]
             e.σ = false
         end
         
@@ -27,8 +27,8 @@
     end
     
     if isPyrochlore # pyrochlore spin ice
-        for e in edges
-            e_dir = vertices[e.∂[1]].x-vertices[e.∂[2]].x
+        for e in cells[2]
+            e_dir = cells[1][e.∂[1]].x-cells[1][e.∂[2]].x
 
             for d in 1:length(e_dir) # make sure to correct for PBCs
                 e_dir[d] /= (abs(e_dir[d])>1) ? -abs(e_dir[d]) : 1
@@ -40,8 +40,8 @@
         return
     end
     
-    for e in edges # square or kagome spin ice
-        e.σ = (vertices[e.∂[1]].x[2]-vertices[e.∂[2]].x[2]==0)
+    for e in cells[2] # square or kagome spin ice
+        e.σ = (cells[1][e.∂[1]].x[2]-cells[1][e.∂[2]].x[2]==0)
     end
     
 end

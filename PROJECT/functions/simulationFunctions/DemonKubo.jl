@@ -16,14 +16,16 @@
 
 # ### Set up the geometry
 
-@everywhere function DemonKuboSetup(vertices, edges, z, T, 𝒽)
+@everywhere function DemonKuboSetup(cells, z, T, 𝒽)
+    vertices = cells[1]
+    edges = cells[2]
     
     g = 2*𝒽 - δE*ceil(2*𝒽/δE)
     
     Dfun = (T) -> δE/(exp(δE/T)-1) - g/(exp(-g/T)+1)
     
     # REinitialise entire system in ground state
-    GroundState!(vertices, edges)
+    GroundState!(cells)
 
     # calculate total demon energy for given temperature T
     D_tot = 0
@@ -98,7 +100,9 @@ end
 
 # ### Single Simulation Run
 
-@everywhere function DKuboSingle(vertices, edges, scale, z, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽)
+@everywhere function DKuboSingle(cells, scale, z, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽)
+    vertices = cells[1]
+    edges = cells[2]
     
     # -- -1. Define Observables --
     g = 2*𝒽 - δE*ceil(2*𝒽/δE)
@@ -118,7 +122,7 @@ end
     tmax = runtime-t_therm
     
     # -- 0. Run Simulation --
-    DemonKuboSetup(vertices, edges, z, T, 𝒽)
+    DemonKuboSetup(cells, z, T, 𝒽)
     J, D, E = DemonKubo(vertices, edges, runtime, 𝒽)
 
     # cut out thermalisation time
@@ -173,11 +177,13 @@ end
 
 function DKuboSimulation(L, PBC, Basis, num_histories, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽)
     
-    vertices, edges, scale = LatticeGrid(L, PBC, Basis)
+    cells, scale = LatticeGrid(L, PBC, Basis)
+    vertices = cells[1]
+    edges = cells[2]
     z = Coordination(Basis)
     
     ks = range(1,length(T)*length(𝒽)*num_histories)
-    args = [[deepcopy(vertices), deepcopy(edges), scale, z, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T[div(div(k-1,num_histories),length(𝒽))+1], 𝒽[rem(div(k-1,num_histories),length(𝒽))+1]] for k=ks]
+    args = [[deepcopy(cells), scale, z, runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T[div(div(k-1,num_histories),length(𝒽))+1], 𝒽[rem(div(k-1,num_histories),length(𝒽))+1]] for k=ks]
     
     function hfun(args)
         return DKuboSingle(args...)
