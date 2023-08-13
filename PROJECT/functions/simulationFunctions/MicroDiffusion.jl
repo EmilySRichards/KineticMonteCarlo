@@ -183,13 +183,16 @@ end
                 # if plaquette has an odd number of edges, it's immediately not flippable
                 flippable = (length(faces[p].∂) % 2 == 0) ? true : false
                 sum = 0
-                if  flippable # if an even plaquette, check the edges have alternating edges => flippable
+                if flippable # if an even plaquette, check the edges have alternating edges => flippable
                     for α in faces[p].∂ 
                         sum += (-1)^edges[α].σ
 
                         if abs(sum) > 1
                             flippable = false
                         end
+                    end
+                    if sum != 0
+                        flippable = false
                     end
                 end
 
@@ -198,6 +201,8 @@ end
                         edges[α].σ = !edges[α].σ
                     end
                 end
+                
+                
                 
                 # either way, no particles move => no need to update any of xs, js or δs
                 

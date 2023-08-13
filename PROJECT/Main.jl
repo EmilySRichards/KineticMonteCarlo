@@ -108,7 +108,7 @@ cells, _ = LatticeGrid(L, PBC, TestBasis)
 vertices = cells[1]
 edges = cells[2]
 
-GroundState!(vertices, edges, false)
+GroundState!(cells, false)
 
 Lvertices, Ledges = LineGraph(vertices, edges);
 
@@ -532,13 +532,13 @@ print("\n", canonicalize(t3 - t2))
 @everywhere include(dir * "/functions/simulationFunctions/MicroDiffusion.jl")
 
 # +
-L = [32, 32]
+L = [64, 64]
 PBC = [true, true]
 
 therm_runtime = floor(Int64,(maximum(L)./2)^2/2/length(L)/Dself) # 500
-runtime = 1000
+runtime = 2000
 tau = 2:100
-num_histories = 200
+num_histories = 500
 𝒽 = [0.0] #range(0, 1, length=7)
 
 T = []; # collect(range(0.01, 10.0, length=50));

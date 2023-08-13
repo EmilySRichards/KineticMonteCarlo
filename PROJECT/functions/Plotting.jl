@@ -28,6 +28,8 @@ function PlotGraph(vertices, edges) # plot the graph - NOTE will only nicely plo
     for v in vertices
        scatter(v.x[1], v.x[2], color=(v.σ ? :yellow : :black), zorder=2) # color=(A(edges,v)<0 ? :yellow : :black)  
     end
+    
+    axis("equal")
 end
 
 # ### Graphs.jl plotting

@@ -167,3 +167,38 @@ function SemiTriangBasis()
     
     return Verts, Links, n, Scale
 end
+
+
+function KagomeBasis()
+    # number of vertices, edges, faces, ...
+    n = [6, 12]
+    
+    Verts = [Cell(false, 0, [], [], []) for j in 1:n[1]]
+    
+    Verts[1].x = [0, 0]
+    Verts[2].x = [0.5, 0]
+    Verts[3].x = [0.25, 0.25]
+    Verts[4].x = [0, 0.5]
+    Verts[5].x = [0.5, 0.5]
+    Verts[6].x = [0.75, 0.75]
+    
+    Links = [] # all >0-dim cells
+    
+    # edges
+    push!(Links, [[(1, [0 0]), (2, [0 0])],
+                  [(2, [0 0]), (1, [1 0])],
+                  [(1, [0 0]), (3, [0 0])],
+                  [(2, [0 0]), (3, [0 0])],
+                  [(3, [0 0]), (4, [0 0])],
+                  [(3, [0 0]), (5, [0 0])],
+                  [(4, [0 0]), (5, [0 0])],
+                  [(5, [0 0]), (4, [1 0])],
+                  [(5, [0 0]), (6, [0 0])],
+                  [(6, [0 0]), (2, [0 1])],
+                  [(6, [0 0]), (1, [1 1])],
+                  [(6, [0 0]), (4, [1 0])]])
+    
+    Scale = [2, 2*sqrt(3)] # scale of the unit cell dimensions (such that bond lengths=1)
+    
+    return Verts, Links, n, Scale
+end
