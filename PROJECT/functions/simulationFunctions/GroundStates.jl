@@ -28,20 +28,14 @@
     
     if isPyrochlore # pyrochlore spin ice
         for e in cells[2]
-            e_dir = cells[1][e.∂[1]].x-cells[1][e.∂[2]].x
-
-            for d in 1:length(e_dir) # make sure to correct for PBCs
-                e_dir[d] /= (abs(e_dir[d])>1) ? -abs(e_dir[d]) : 1
-            end
-
-            e.σ = (e_dir[1] ≈ e_dir[2])
+            e.σ = (e.x[1] ≈ e.x[2])
         end
         
         return
     end
     
     for e in cells[2] # square or kagome spin ice
-        e.σ = (cells[1][e.∂[1]].x[2]-cells[1][e.∂[2]].x[2]==0)
+        e.σ = (e.x[2]==0)
     end
     
 end

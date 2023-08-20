@@ -101,8 +101,8 @@ end
 
 # +
 TestBasis = SquareBasis()
-L = [3, 3]
-PBC = [false, false]
+L = [2, 2]
+PBC = [true, false]
 
 cells, _ = LatticeGrid(L, PBC, TestBasis)
 vertices = cells[1]
@@ -111,6 +111,9 @@ edges = cells[2]
 GroundState!(cells, false)
 
 Lvertices, Ledges = LineGraph(vertices, edges);
+# -
+
+PlotGraph(vertices, edges)
 
 # +
 f = figure()
@@ -156,14 +159,6 @@ end
 axis("equal")
 savefig("figs/lattice.pdf")
 # -
-
-for edge in cells[3]
-    print(edge.x, ":   ")
-    for i in edge.∂
-        print(cells[2][i].x, "  ")
-    end
-    print("\n\n")
-end
 
 # ## Thermal Conductivity
 
@@ -394,12 +389,12 @@ NumT = 50
 #Tmax *= (λ == 0 ? 1.0 : 0.5)
 T = collect(range(Tmin, Tmax, length=NumT))
 
-𝒽 = 0.0 #range(0, 1, length=7)
+𝒽 = range(0, 1, length=3)
 
 num_histories = 1
-therm_runtime = 1500
-runtime = 1500
-t_therm = 500
+therm_runtime = 1000
+runtime = 1000
+t_therm = 200
 t_autocorr = 100
 N_blocks = -1
 t_cutoff = 100
@@ -532,13 +527,13 @@ print("\n", canonicalize(t3 - t2))
 @everywhere include(dir * "/functions/simulationFunctions/MicroDiffusion.jl")
 
 # +
-L = [64, 64]
+L = [16, 16]
 PBC = [true, true]
 
 therm_runtime = floor(Int64,(maximum(L)./2)^2/2/length(L)/Dself) # 500
-runtime = 2000
-tau = 2:100
-num_histories = 500
+runtime = 1000
+tau = 2:200
+num_histories = 250
 𝒽 = [0.0] #range(0, 1, length=7)
 
 T = []; # collect(range(0.01, 10.0, length=50));
@@ -611,7 +606,7 @@ for t in 1:size(VACF, 2)
     end
 end
 sgn = sign(VACF[findmax(abs.(VACF[:,1,1]))[2],1,1])
-plot(sgn .* length(L) .* abs(C[1]) .* tau .^ γ[1], color=:black, "--")
+plot(-sgn .* length(L) .* abs(C[1]) .* tau .^ γ[1], color=:black, "--")
 savefig("figs/VACF.png")
 
 # estimate based on assuming the number of particles is <ϵ_i>/2λ/2 in single vertex approxn
@@ -689,6 +684,9 @@ print("D = ", D[1,1,1], " ± ", D[2,1,1], "\n\n")
 print("α = ", α[1,1,1], " ± ", α[2,1,1], "\n\n")
 print("C = ", C[1,1,1], " ± ", C[2,1,1], "\n\n")
 print("γ = ", γ[1,1,1], " ± ", γ[2,1,1], "\n\n")
+
+print(α[1,1,1]+1, " ± ", α[2,1,1], "\n\n")
+print(2*γ[1,1,1]+4, " ± ", 2*γ[2,1,1], "\n\n")
 
 save("data/MicroDiff.jld", "Size", L,
                            "Fields", 𝒽,

@@ -83,12 +83,7 @@ end
                 D[t+1] -= ΔE
                 
                 # update current
-                r_β = vertices[edges[β].∂[1]].x - vertices[edges[β].∂[2]].x
-                for d in 1:length(r_β) # if vector has any axis displacement > 1, normalise to handle PBCs
-                    r_β[d] /= (abs(r_β[d])>1) ? -abs(r_β[d]) : 1
-                end
-                
-                J[:,t] += r_β * Δj_β # note no factor of 1/2 b/c only sum each edge once
+                J[:,t] += edges[β].x * Δj_β # note no factor of 1/2 b/c only sum each edge once
             end
         end
     end

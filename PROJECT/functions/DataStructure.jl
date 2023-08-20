@@ -38,7 +38,7 @@ end
     cells = []
     
     for c in 1:length(Links0)+1
-        push!(cells, [Cell(false, 0, [], [], []) for _ in 1:n[c]*N])
+        push!(cells, [Cell(false, 0, zeros(dim), [], []) for _ in 1:n[c]*N])
     end
     
     # define indexing convention
@@ -122,6 +122,21 @@ end
     end    
     
     
+    # define the displacements for each edge - by doing this we don't need to worry about PBCs, we're in a basis relative to the torus
+    for I in 1:N
+        for α in 1:n[2]
+            𝛂 = n[2]*(I-1) + α # absolute index of the edge
+            
+            V1 = Links0[1][α][1]
+            V2 = Links0[1][α][2]
+            
+            cells[2][𝛂].x = (Verts0[V2[1]].x + V2[2]) - (Verts0[V1[1]].x + V1[2]) # displacement of edge V1->V2
+        end
+    end
+    
+    # Note: the higher-dim x's are just zero for our purposes...
+    
+    
     # kill off hyperedges crossing OBCs and shift indices to compensate in order of dimension
     for c in 2:length(cells)
 
@@ -146,21 +161,25 @@ end
     end
     
     
-    # rescale vertex positions
-    for v in cells[1]
-        v.x .*= Scale
+    # rescale all the cell positions/displacements
+    for dcells in cells
+        for c in dcells
+            c.x .*= Scale
+        end
     end
     
     # iteratively assign hyperedge positions from hypervertex positions in order of dimension
-    for c in 2:length(cells)
-        for e in cells[c]
-            e.x = zeros(length(L))
-            for i in e.∂
-                e.x += cells[c-1][i].x
-            end
-            e.x ./= length(e.∂)
-        end
-    end
+    #for c in 2:length(cells)
+    #    for e in cells[c]
+    #        e.x = zeros(length(L))
+    #        for i in e.∂
+    #            e.x += cells[c-1][i].x
+    #        end
+    #        e.x ./= length(e.∂)
+    #    end
+    #end
+    
+    # 
     
     return cells, Scale
 end
@@ -212,7 +231,7 @@ function LineGraph(vertices, edges)
     end
     
     for α in eachindex(edges)
-        Lvertices[α].x = edges[α].x
+        Lvertices[α].x = 0.5 .* (vertices[edges[α].∂[1]].x + vertices[edges[α].∂[2]].x)
     end
     
     for i in eachindex(Ledges)

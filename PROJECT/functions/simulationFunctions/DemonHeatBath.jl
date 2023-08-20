@@ -59,7 +59,8 @@
     
     # edges
     for α in eachindex(edges)
-        x = 1 + edges[α].x[1]/Sx
+        xEdge = 0.5 .* (vertices[edges[α].∂[1]].x[1] + vertices[edges[α].∂[2]].x[1])
+        x = 1 + xEdge/Sx
         n = floor(Int, x)
         push!(strips[n][2], α)
     end

@@ -90,10 +90,7 @@ end
                 edges[β].σ = !edges[β].σ
                 
                 # displacement of edge (fixed to account for PBCs)
-                Δ = vertices[j2].x - vertices[j1].x
-                for d in 1:length(Δ)
-                    Δ[d] /= (abs(Δ[d])>1) ? -abs(Δ[d]) : 1 # note MINUS abs to ensure orientation is right (i.e. Δ>0 if going from RHS to LHS)
-                end
+                Δ = edges[β].x
                 
                 # if a prtcl is linked to this edge, move it - note ΔE=/=0 if prtcl on both vertices => ignore this case
                 n1 = findfirst(js.==j1)
@@ -118,7 +115,7 @@ end
 
 # ### Single spin-flip dynamics routine WITH PLAQUETTE FLIPS
 
-@everywhere function MicroDiffn_plaqs(vertices, edges, faces, runtime, 𝒽, allowBckgdMoves)
+@everywhere function MicroDiffn_plaqs(vertices, edges, faces, runtime, 𝒽, allowBckgdMoves, N)
     
     dim = length(vertices[1].x)
     
@@ -143,41 +140,47 @@ end
     for t in 1:runtime
         xs[:,:,t+1] = xs[:,:,t]
         
-        for _ in edges
+        for e in eachindex(edges)
             
-            β = rand(eachindex(edges)) # pick a random edge
-            
-            ΔE = ΔE_flip(vertices, edges, β, 𝒽)
+            # try to flip 1 edge
+            for _ in 1:N
+                β = rand(eachindex(edges)) # pick a random edge
 
-            j1 = edges[β].∂[1]
-            j2 = edges[β].∂[2]
-            
-            # try to move a particle
-            if ΔE == 0 && (allowBckgdMoves || (j1 in js || j2 in js))
+                ΔE = ΔE_flip(vertices, edges, β, 𝒽)
 
-                edges[β].σ = !edges[β].σ
+                j1 = edges[β].∂[1]
+                j2 = edges[β].∂[2]
 
-                # displacement of edge (fixed to account for PBCs)
-                Δ = vertices[j2].x - vertices[j1].x
-                for d in 1:length(Δ)
-                    Δ[d] /= (abs(Δ[d])>1) ? -abs(Δ[d]) : 1 # note MINUS abs to ensure orientation is right (i.e. Δ>0 if going from RHS to LHS)
+
+                if ΔE == 0 && (allowBckgdMoves || (j1 in js || j2 in js))
+
+                    edges[β].σ = !edges[β].σ
+
+                    # displacement of edge (fixed to account for PBCs)
+                    Δ = edges[β].x
+                    for d in 1:length(Δ)
+                        Δ[d] /= (abs(Δ[d])>1) ? -abs(Δ[d]) : 1 # note MINUS abs to ensure orientation is right (i.e. Δ>0 if going from RHS to LHS)
+                    end
+
+                    # if a prtcl is linked to this edge, move it - note ΔE=/=0 if prtcl on both vertices => ignore this case
+                    n1 = findfirst(js.==j1)
+                    n2 = findfirst(js.==j2)
+                    if n1!=nothing     # j1 = js[n1] = excitation
+                        js[n1] = j2
+                        xs[:,n1,t+1] += Δ # = vertices[j2].x # 
+                        δs[:,n1,t] += Δ
+                    elseif n2!=nothing # j2 = js[n2] = excitation
+                        js[n2] = j1
+                        xs[:,n2,t+1] -= Δ # = vertices[j1].x # 
+                        δs[:,n2,t] -= Δ
+                    end
                 end
-
-                # if a prtcl is linked to this edge, move it - note ΔE=/=0 if prtcl on both vertices => ignore this case
-                n1 = findfirst(js.==j1)
-                n2 = findfirst(js.==j2)
-                if n1!=nothing     # j1 = js[n1] = excitation
-                    js[n1] = j2
-                    xs[:,n1,t+1] += Δ # = vertices[j2].x # 
-                    δs[:,n1,t] += Δ
-                elseif n2!=nothing # j2 = js[n2] = excitation
-                    js[n2] = j1
-                    xs[:,n2,t+1] -= Δ # = vertices[j1].x # 
-                    δs[:,n2,t] -= Δ
-                end
+            end
             
-            # if no zero energy move, try a background plaquette flip
-            else    
+            # try to flip a plaquette every N moves
+            if false
+            #if mod(e, N) == 0
+            #for _ in 1:1
                 p = rand(eachindex(faces)) # pick a random plaquette
 
                 # if plaquette has an odd number of edges, it's immediately not flippable
@@ -202,10 +205,7 @@ end
                     end
                 end
                 
-                
-                
                 # either way, no particles move => no need to update any of xs, js or δs
-                
             end
         end
     end
@@ -244,7 +244,7 @@ end
             
             # propose flips
             i = rand(eachindex(vertices)) # shared vertex
-            𝜷 = sample(vertices[i].δ, 2; replace=true) # two nearest-neighbour spins to flip (in order)
+            𝜷 = sample(vertices[i].δ, 2; replace=false) # two nearest-neighbour spins to flip (in order)
             
             𝒊 = [edges[𝜷[n]].∂[findfirst(edges[𝜷[n]].∂ .!= i)] for n in 1:2] # outer vertices (but may still coincide)
             
@@ -254,9 +254,9 @@ end
             ΔE = ΔE_2flip(vertices, edges, 𝜷, 𝒊, i, 𝒽)
 
             # decide whether to accept and perform the move
-            if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ && ΣA>0 # energy AND magnetisation conserved AND no pair diffusion moves (i.e. no particle at central site i)
-            #if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ && ΣA<0 # energy AND magnetisation conserved AND ONLY pair diffusion moves (i.e. no particle at central site i)
-            #if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ # energy AND magnetisation conserved
+            if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ # energy AND magnetisation conserved
+            # && ΣA>0 NO   hole diffusion moves
+            # && ΣA<0 ONLY hole diffusion moves
                 
                 edges[𝜷[1]].σ = !edges[𝜷[1]].σ
                 edges[𝜷[2]].σ = !edges[𝜷[2]].σ
@@ -264,15 +264,15 @@ end
                 # ΔE=0 => an excitation is linked to this edge => move it
                 # we choose to assume the central particle is fixed => valid way of tracking them
                 
-                # displacement of edge (fixed to account for PBCs)
-                Δ1 = vertices[i].x - vertices[𝒊[1]].x
-                for d in 1:length(Δ1)
-                    Δ1[d] /= (abs(Δ1[d])>1) ? -abs(Δ1[d]) : 1 # note MINUS abs to ensure orientation is right (i.e. Δ>0 if going from RHS to LHS)
+                # displacement of edge (make sure they're oriented in the right direction)
+                Δ1 = edges[𝜷[1]].x
+                if edges[𝜷[1]].∂ != [𝒊[1], i] # correct orientation to 𝒊[1]->i 
+                    Δ1 .*= -1
                 end
                 
-                Δ2 = vertices[𝒊[2]].x - vertices[i].x
-                for d in 1:length(Δ2)
-                    Δ2[d] /= (abs(Δ2[d])>1) ? -abs(Δ2[d]) : 1 # note MINUS abs to ensure orientation is right (i.e. Δ>0 if going from RHS to LHS)
+                Δ2 = edges[𝜷[2]].x
+                if edges[𝜷[1]].∂ != [i, 𝒊[2]] # correct orientation to i->𝒊[2]
+                    Δ2 .*= -1
                 end
                 
                 Δ = Δ2 + Δ1
@@ -385,7 +385,7 @@ end
             MicroDiffn_2flip(vertices, edges, therm_runtime, 𝒽)
         else
             #MicroDiffn(vertices, edges, therm_runtime, 𝒽, true)
-            MicroDiffn_plaqs(vertices, edges, faces, therm_runtime, 𝒽, true)
+            MicroDiffn_plaqs(vertices, edges, faces, therm_runtime, 𝒽, true, 1)
         end
     end
     
@@ -415,7 +415,7 @@ end
         x, δ = MicroDiffn_2flip(vertices, edges, runtime, 𝒽)
     else
         #x, δ = MicroDiffn(vertices, edges, runtime, 𝒽, true)
-        x, δ = MicroDiffn_plaqs(vertices, edges, faces, runtime, 𝒽, true)
+        x, δ = MicroDiffn_plaqs(vertices, edges, faces, runtime, 𝒽, true, 1)
     end
     
     return x, δ, M, ℙ

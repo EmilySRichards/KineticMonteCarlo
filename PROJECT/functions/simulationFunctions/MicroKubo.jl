@@ -119,12 +119,7 @@ end
                 edges[β].σ = !edges[β].σ
             
                 # update x-current
-                r_β = vertices[edges[β].∂[1]].x - vertices[edges[β].∂[2]].x
-                for d in 1:length(r_β) # if vector has any axis displacement > 1, normalise to handle PBCs
-                    r_β[d] /= (abs(r_β[d])>1) ? -abs(r_β[d]) : 1
-                end
-                
-                J[:,t] += r_β * Δj_β # note no factor of 1/2 b/c only sum each edge once
+                J[:,t] += edges[β].x * Δj_β # note no factor of 1/2 b/c only sum each edge once
             end
         end
         
@@ -158,31 +153,30 @@ end
             
             # propose flips
             i = rand(eachindex(vertices)) # shared vertex
-            𝜷 = sample(vertices[i].δ, 2; replace=true) # two nearest-neighbour spins to flip (in order)
+            𝜷 = sample(vertices[i].δ, 2; replace=false) # two nearest-neighbour spins to flip (in order)
             
             𝒊 = [edges[𝜷[n]].∂[findfirst(edges[𝜷[n]].∂ .!= i)] for n in 1:2] # outer vertices (but may still coincide)
             
-            ΣA = 0.5*(1-A(edges, vertices[i])) + 0.5*(1-A(edges, vertices[𝒊[1]])) + 0.5*(1-A(edges, vertices[𝒊[2]]))
-            
             # calculate overall energy change and current density between the two unshared vertices
             ΔE = ΔE_2flip(vertices, edges, 𝜷, 𝒊, i, 𝒽)
-            Δj = Δj_2flip(vertices, edges, 𝜷, 𝒊, 𝒽)
+            Δj = Δj_2flip(vertices, edges, 𝜷, 𝒊, 𝒽) # current flow along 𝒊[1]->i->𝒊[2]
             
+            ΣA = 0.5*(1-A(edges, vertices[i])) + 0.5*(1-A(edges, vertices[𝒊[1]])) + 0.5*(1-A(edges, vertices[𝒊[2]]))           
             # decide whether to accept and perform the move
             if ΔE == 0 && edges[𝜷[1]].σ!=edges[𝜷[2]].σ # energy AND magnetisation conserved
                 
                 edges[𝜷[1]].σ = !edges[𝜷[1]].σ
                 edges[𝜷[2]].σ = !edges[𝜷[2]].σ
                 
-                # get path of current flow
-                r_β1 = vertices[i].x - vertices[𝒊[1]].x
-                for d in 1:length(r_β1) # if vector has any axis displacement > 1, normalise to handle PBCs
-                    r_β1[d] /= (abs(r_β1[d])>1) ? -abs(r_β1[d]) : 1
+                # get path of current flow (make sure they're oriented in the right direction)
+                r_β1 = edges[𝜷[1]].x
+                if edges[𝜷[1]].∂[1] != [𝒊[1], i] # correct orientation to 𝒊[1]->i 
+                    r_β1 .*= -1
                 end
                 
-                r_β2 = vertices[𝒊[2]].x - vertices[i].x
-                for d in 1:length(r_β2) # if vector has any axis displacement > 1, normalise to handle PBCs
-                    r_β2[d] /= (abs(r_β2[d])>1) ? -abs(r_β2[d]) : 1
+                r_β2 = edges[𝜷[2]].x
+                if edges[𝜷[1]].∂ != [i, 𝒊[2]] # correct orientation to i->𝒊[2]
+                    r_β2 .*= -1
                 end
                 
                 J[:,t] += (r_β1 + r_β2) * Δj # note no factor of 1/2 b/c only sum each pair of sites once
