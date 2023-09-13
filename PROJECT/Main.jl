@@ -61,7 +61,7 @@ t0 = now()
 
 # +
 # chosen basis
-@everywhere Basis = SquareBasis() # HexBasis() # DiamondBasis() # CubicBasis(2) # 
+@everywhere Basis = HexBasis() # DiamondBasis() # CubicBasis(2) # 
 
 # coordination number of lattice (ASSERTED CONSTANT FOR OUR PURPOSES)
 @everywhere z = Coordination(Basis)
@@ -100,9 +100,9 @@ end
 # ### Testing Data Structure
 
 # +
-TestBasis = SquareBasis()
-L = [2, 2]
-PBC = [true, false]
+TestBasis = HexBasis()
+L = [3, 3]
+PBC = [false, false]
 
 cells, _ = LatticeGrid(L, PBC, TestBasis)
 vertices = cells[1]
@@ -114,6 +114,8 @@ Lvertices, Ledges = LineGraph(vertices, edges);
 # -
 
 PlotGraph(vertices, edges)
+
+print(length(cells[2]))
 
 # +
 f = figure()
@@ -136,27 +138,27 @@ for v in vertices
     end
 end
 
-for e in Ledges
-    r1 = Lvertices[e.∂[1]].x
-    r2 = Lvertices[e.∂[2]].x
-    
-    if length(TestBasis[4]) == 2
-        plot([r1[1]; r2[1]], [r1[2]; r2[2]], color=:gray, zorder=2, "--") 
-    else
-        plot3D([r1[1]; r2[1]], [r1[2]; r2[2]], [r1[3]; r2[3]], color=:gray, zorder=1, "--") 
-    end
-    #
-end
-
-for v in Lvertices
-    if length(TestBasis[4]) == 2
-        scatter(v.x[1], v.x[2], color=(v.σ ? :red : :blue), s=10, zorder=4) # color=(A(edges,v)<0 ? :yellow : :black)  
-    else
-        scatter3D(v.x[1], v.x[2], v.x[3], color=(v.σ ? :red : :blue), s=10, zorder=2) # color=(A(edges,v)<0 ? :yellow : :black)  
-    end
-end
+#for e in Ledges
+#    r1 = Lvertices[e.∂[1]].x
+#    r2 = Lvertices[e.∂[2]].x
+#    
+#    if length(TestBasis[4]) == 2
+#        plot([r1[1]; r2[1]], [r1[2]; r2[2]], color=:gray, zorder=2, "--") 
+#    else
+#        plot3D([r1[1]; r2[1]], [r1[2]; r2[2]], [r1[3]; r2[3]], color=:gray, zorder=1, "--") 
+#    end
+#end
+#
+#for v in Lvertices
+#    if length(TestBasis[4]) == 2
+#        scatter(v.x[1], v.x[2], color=(v.σ ? :red : :blue), s=10, zorder=4) # color=(A(edges,v)<0 ? :yellow : :black)  
+#    else
+#        scatter3D(v.x[1], v.x[2], v.x[3], color=(v.σ ? :red : :blue), s=10, zorder=2) # color=(A(edges,v)<0 ? :yellow : :black)  
+#    end
+#end
 
 axis("equal")
+gca()[:view_init](45,15)
 savefig("figs/lattice.pdf")
 # -
 
@@ -379,7 +381,7 @@ print(canonicalize(t2 - t1))
 
 # +
 # PARAMETERS
-L = [5, 5]
+L = [16, 16]
 PBC = [true, true]
 
 Tmin = 0.01
@@ -387,19 +389,19 @@ Tmax = 10.0
 NumT = 50
 
 #Tmax *= (λ == 0 ? 1.0 : 0.5)
-T = collect(range(Tmin, Tmax, length=NumT))
+T = [1.0] #collect(range(Tmin, Tmax, length=NumT))
 
-𝒽 = range(0, 1, length=3)
+𝒽 = [0.0] #range(0, 1, length=3)
 
 num_histories = 1
-therm_runtime = 1000
+therm_runtime = 500
 runtime = 1000
-t_therm = 200
+t_therm = 100
 t_autocorr = 100
 N_blocks = -1
 t_cutoff = 100
 
-allComponents = false
+allComponents = true
 
 # EVALUATION
 κ, C, Diff, M, ℙ, κStd, CStd, DiffStd, MStd, ℙStd = MKuboSimulation(L, PBC, Basis, num_histories, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽, allComponents);
@@ -484,6 +486,49 @@ for i in 1:dim
     end
 end
 
+# +
+TestK = load("data/TEST.jld", "Test");
+vertices = load("data/TEST.jld", "vertices");
+edges = load("data/TEST.jld", "edges");
+
+TestK .*= length(edges);
+# -
+
+K = mean(TestK, dims=(3,4))
+for x in 1:2
+    for y in 1:2
+        print("K_", x, y, " = ", K[x,y], "\n")
+    end
+end
+
+# +
+using Graphs
+
+function LatticeToGraph(vertices, edges)
+    elist = []
+    for edge in edges
+        push!(elist, Tuple(edge.∂))
+    end
+    return SimpleGraph(Graphs.SimpleEdge.(elist));
+end
+
+
+
+
+Lvertices, Ledges = LineGraph(vertices, edges) 
+LG = LatticeToGraph(Lvertices, Ledges) # line graph (we'll use the graph metric on this)
+
+d = zeros(size(TestK[1,1,:,:]))
+for e in eachindex(edges)
+    ds = dijkstra_shortest_paths(LG, e)
+    d[e,:] .= ds.dists
+end
+
+scatter(vec(d), vec(TestK[1,1,:,:]))
+# -
+
+contourf(abs.(TestK))
+
 save("data/MicroKubo.jld", "Size", L,
                            "Fields", 𝒽,
                            "num_histories", num_histories,
@@ -531,9 +576,9 @@ L = [16, 16]
 PBC = [true, true]
 
 therm_runtime = floor(Int64,(maximum(L)./2)^2/2/length(L)/Dself) # 500
-runtime = 1000
+runtime = 300
 tau = 2:200
-num_histories = 250
+num_histories = 5
 𝒽 = [0.0] #range(0, 1, length=7)
 
 T = []; # collect(range(0.01, 10.0, length=50));
@@ -712,6 +757,55 @@ save("data/MicroDiff.jld", "Size", L,
 t4 = now()
 print("\n", canonicalize(t4 - t3))
 
-print("\nTOTAL RUNTIME = ", canonicalize(t4 - t0))
+# ### Diffusion Subgraphs
+
+# +
+Basis = HexBasis()
+L = [16, 16]
+PBC = [true, true]
+
+therm_runtime = 1000
+T_therm = 0.1
+𝒽 = [0.0]
+randomInit = false
+
+cells, scale = LatticeGrid(L, PBC, Basis)
+
+_ = MicroKuboSetup(cells, therm_runtime, T_therm, 𝒽, randomInit)
+# -
+
+# find all the excitations
+js = []
+for j in eachindex(cells[1])
+    Aj = A(cells[2], cells[1][j])
+    Qj = abs(Q(cells[2], cells[1][j]))
+
+    if (isSpinIce ? (Qj == 3 || Qj == 2) : Aj == -1)
+        push!(js, j)
+    end
+end
+
+# +
+using Graphs
+
+function LatticeToDigraph(vertices, edges)
+    elist = []
+    for edge in edges
+        verts = edge.σ 
+        push!(elist, Tuple(edge.∂))
+    end
+    return SimpleGraph(Graphs.SimpleEdge.(elist));
+end
+
+# +
+for j in js # for each excitation, the reachable subgraph
+    
+end
+# -
+
+t5 = now()
+print("\n", canonicalize(t5 - t4))
+
+print("\nTOTAL RUNTIME = ", canonicalize(t5 - t0))
 
 close("all") 

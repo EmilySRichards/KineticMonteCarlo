@@ -109,6 +109,9 @@ end
     J = zeros(Float64, length(vertices[1].x), runtime)
     P = zeros(Float64, length(vertices[1].x), runtime)
     
+    Je = zeros(Float64, length(edges), runtime)
+    Pe = zeros(Float64, length(edges), runtime)
+    
     for t in 1:runtime
         for _ in edges
             β = rand(eachindex(edges))
@@ -119,10 +122,12 @@ end
                 edges[β].σ = !edges[β].σ
             
                 # update x-current
+                Je[β,t] += Δj_β
                 J[:,t] += edges[β].x * Δj_β # note no factor of 1/2 b/c only sum each edge once
             end
         end
         
+        Pe = cumsum(Je, dims=2) .- Je # integrate Je to get Pe
         
         ϵ0 = 0
         x0 = zeros(length(vertices[1].x))
@@ -139,7 +144,7 @@ end
         
     end
     
-    return J, P
+    return J, P, Je, Pe
 end
 
 # ### Double spin-flip dynamics routine
@@ -208,6 +213,9 @@ end
     vertices = cells[1]
     edges = cells[2]
     
+    dim = allComponents ? length(vertices[1].x) : 1
+    
+    
     Cfun = (E) -> var(E) / T^2 / length(edges)
     κfun = (S) -> mean(S) / T^2 / length(edges)
     Dfun = (E,S) -> κfun(S) / Cfun(E)
@@ -245,7 +253,7 @@ end
     if twoFlip
         J, P = MicroKubo_2flip(vertices, edges, runtime, 𝒽)
     else
-        J, P = MicroKubo(vertices, edges, runtime, 𝒽)
+        J, P, Je, Pe = MicroKubo(vertices, edges, runtime, 𝒽)
     end
     
     # cut out thermalisation time
@@ -256,22 +264,41 @@ end
     # -- 1. Heat Capacity --
     C_μ, C_s = Estimator(Bootstrap, [E], Cfun, t_autocorr, N_blocks)
     
-    # -- 2. Thermal Conductivity and Diffusivity--
-    dim = allComponents ? length(vertices[1].x) : 1
+    
+    
+    # -- ?. Thermal conductivity Test --
+    #Test = zeros(Float64, tmax, length(edges), length(edges))
+    #for t in 1:tmax
+    #    for τ in 0:min(tmax-t, t_cutoff)
+    #        Test[t,:,:] += 0.5 .* Je[:,t+τ] .* Je[:,t]' .* tmax/(tmax-τ)
+    #    end
+    #    Test[t,:,:] -= 0.5 .* Je[:,t] .* Pe[:,t]'
+    #end
+    #
+    #κ_μ = zeros(dim, dim, length(edges), length(edges))
+    #for e in eachindex(edges)
+    #    for f in eachindex(edges)
+    #        tmp, _ = Estimator(Bootstrap, [Test[:,e,f]], κfun, t_autocorr, N_blocks)
+    #        
+    #        κ_μ[:,:,e,f] = tmp .* edges[e].x .* edges[f].x'
+    #    end
+    #end
+    #
+    #save("data/TEST.jld", "Test", κ_μ, "vertices", vertices, "edges", edges)
+    
+    
+    
+    # -- 2. Thermal Conductivity and Diffusivity --
     result = zeros(dim, dim, 2, 5)
     
     if allComponents
         statistic = zeros(Float64, tmax, dim, dim)
-        for i in 1:dim
-            for j in 1:dim
-                for t in 1:tmax
-                    for τ in 0:min(tmax-t, t_cutoff)
-                        # symmetric part: statistic[t,i,j] += (τ==0 ? 0.5 : 1.0) * 0.5 * (J[i,t+τ] * J[j,t] + J[j,t+τ] * J[i,t]) * tmax/(tmax-τ)
-                        statistic[t,i,j] += 0.5 * J[i,t+τ] * J[j,t] * tmax/(tmax-τ)
-                    end
-                    statistic[t,i,j] += 0.5 * J[j,t] * P[i,t]
-                end
+        for t in 1:tmax
+            for τ in 0:min(tmax-t, t_cutoff)
+                # symmetric part: #statistic[t,:,:] += (τ==0 ? 0.5 : 1.0) * 0.5 * (J[:,t+τ] .* J[:,t]' + J[:,t] .* J[i,t+τ]') * tmax/(tmax-τ)
+                statistic[t,:,:] += 0.5 .* J[:,t+τ] .* J[:,t]' .* tmax/(tmax-τ)
             end
+            statistic[t,:,:] -= 0.5 .* J[:,t] .* P[:,t]'
         end
         #statistic .*= prod(scale) # rescaling to correct for scaling of unit cells
 
