@@ -22,11 +22,11 @@ function PlotGraph(vertices, edges) # plot the graph - NOTE will only nicely plo
         r1 = vertices[e.∂[1]].x
         r2 = vertices[e.∂[2]].x
         
-        plot([r1[1]; r2[1]], [r1[2]; r2[2]], color=(e.σ ? :red : :blue), zorder=1) 
+        plot([r1[1]; r2[1]], [r1[2]; r2[2]], color=(e.σ ? :black : :gray), zorder=1) 
     end
     
     for v in vertices
-       scatter(v.x[1], v.x[2], color=(v.σ ? :yellow : :black), zorder=2) # color=(A(edges,v)<0 ? :yellow : :black)  
+       scatter(v.x[1], v.x[2], color=:black, zorder=2) # color=(A(edges,v)<0 ? :yellow : :black)  
     end
     
     axis("equal")

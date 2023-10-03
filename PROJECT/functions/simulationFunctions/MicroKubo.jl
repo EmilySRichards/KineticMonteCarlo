@@ -108,43 +108,44 @@ end
 @everywhere function MicroKubo(vertices, edges, runtime, 𝒽)
     J = zeros(Float64, length(vertices[1].x), runtime)
     P = zeros(Float64, length(vertices[1].x), runtime)
-    
-    Je = zeros(Float64, length(edges), runtime)
-    Pe = zeros(Float64, length(edges), runtime)
-    
+        
     for t in 1:runtime
         for _ in edges
             β = rand(eachindex(edges))
             ΔE = ΔE_flip(vertices, edges, β, 𝒽)
             
             if ΔE == 0
-                Δj_β = Δj_flip(vertices, edges, β)
                 edges[β].σ = !edges[β].σ
             
-                # update x-current
-                Je[β,t] += Δj_β
-                J[:,t] += edges[β].x * Δj_β # note no factor of 1/2 b/c only sum each edge once
+                # update energy current
+                Δj_β = Δj_flip(vertices, edges, β) # = (Δϵ2 - Δϵ1)/2
+                J[:,t] += edges[β].x * Δj_β
             end
         end
         
-        Pe = cumsum(Je, dims=2) .- Je # integrate Je to get Pe
-        
-        ϵ0 = 0
-        x0 = zeros(length(vertices[1].x))
-        for vertex in vertices
-            ϵ0 += ϵ(vertices, edges, vertex, 𝒽)
-            x0 += vertex.x
+        # update energy polarisation
+        for β in eachindex(edges)
+            ϵ1 = ϵ(vertices, edges, vertices[edges[β].∂[1]], 𝒽)
+            ϵ2 = ϵ(vertices, edges, vertices[edges[β].∂[2]], 𝒽)
+
+            P[:,t] += edges[β].x * (ϵ2 - ϵ1)/2
         end
-        ϵ0 /= length(vertices)
-        x0 ./= length(vertices)
-        
-        for vertex in vertices
-            P[:,t] += (vertex.x - x0) * (ϵ(vertices, edges, vertex, 𝒽) - ϵ0)
-        end
+
+        #E = 0
+        #x0 = zeros(length(vertices[1].x))
+        #for vertex in vertices
+        #    E += ϵ(vertices, edges, vertex, 𝒽)
+        #    x0 += vertex.x
+        #end
+        #x0 ./= length(vertices)
+        #for vertex in vertices
+        #    P[:,t] += vertex.x * ϵ(vertices, edges, vertex, 𝒽)
+        #end
+        #P[:,t] -= x0 * E 
         
     end
     
-    return J, P, Je, Pe
+    return J, P
 end
 
 # ### Double spin-flip dynamics routine
@@ -253,7 +254,7 @@ end
     if twoFlip
         J, P = MicroKubo_2flip(vertices, edges, runtime, 𝒽)
     else
-        J, P, Je, Pe = MicroKubo(vertices, edges, runtime, 𝒽)
+        J, P = MicroKubo(vertices, edges, runtime, 𝒽)
     end
     
     # cut out thermalisation time
@@ -263,29 +264,6 @@ end
     
     # -- 1. Heat Capacity --
     C_μ, C_s = Estimator(Bootstrap, [E], Cfun, t_autocorr, N_blocks)
-    
-    
-    
-    # -- ?. Thermal conductivity Test --
-    #Test = zeros(Float64, tmax, length(edges), length(edges))
-    #for t in 1:tmax
-    #    for τ in 0:min(tmax-t, t_cutoff)
-    #        Test[t,:,:] += 0.5 .* Je[:,t+τ] .* Je[:,t]' .* tmax/(tmax-τ)
-    #    end
-    #    Test[t,:,:] -= 0.5 .* Je[:,t] .* Pe[:,t]'
-    #end
-    #
-    #κ_μ = zeros(dim, dim, length(edges), length(edges))
-    #for e in eachindex(edges)
-    #    for f in eachindex(edges)
-    #        tmp, _ = Estimator(Bootstrap, [Test[:,e,f]], κfun, t_autocorr, N_blocks)
-    #        
-    #        κ_μ[:,:,e,f] = tmp .* edges[e].x .* edges[f].x'
-    #    end
-    #end
-    #
-    #save("data/TEST.jld", "Test", κ_μ, "vertices", vertices, "edges", edges)
-    
     
     
     # -- 2. Thermal Conductivity and Diffusivity --
