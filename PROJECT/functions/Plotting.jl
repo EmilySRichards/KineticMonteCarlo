@@ -16,20 +16,56 @@
 
 # ### Graph plotting
 
-function PlotGraph(vertices, edges) # plot the graph - NOTE will only nicely plot graphs embeddable into R^2 (i.e. won't show PBCs wel!)
-    figure()
-    for e in edges
-        r1 = vertices[e.∂[1]].x
-        r2 = vertices[e.∂[2]].x
-        
-        plot([r1[1]; r2[1]], [r1[2]; r2[2]], color=(e.σ ? :black : :gray), zorder=1) 
+function PlotGraph(S, Δ, toPlot=nothing) # plot the graph - NOTE will only nicely plot graphs embeddable into R^2 (i.e. won't show PBCs wel!)
+    dim = length(Δ.cells[1][1].x)
+    
+    if dim==2
+        fig = figure()
+        ax = fig.add_subplot(111)
+    else
+        fig = figure()
+        ax = fig.add_subplot(111, projection="3d") 
     end
     
-    for v in vertices
-       scatter(v.x[1], v.x[2], color=:black, zorder=2) # color=(A(edges,v)<0 ? :yellow : :black)  
+    for (e, Δe) in enumerate(Δ.cells[2])
+        if toPlot != nothing && !toPlot[2][e]
+            continue
+        end
+        
+        r1 = Δ.cells[1][Δe.∂[findfirst(Δe.η.<0)]].x
+        r2 = Δ.cells[1][Δe.∂[findfirst(Δe.η.>0)]].x
+        
+        r0 = (GetCpt(S, e, true)>0) ? r1 : r2
+        δr = (GetCpt(S, e, true)>0) ? r2-r1 : r1-r2
+        δr *= 0.5
+        
+        if dim==2
+            ax.plot([r1[1]; r2[1]], [r1[2]; r2[2]], color=(GetCpt(S, e, false)>0 ? :red : :blue), zorder=1)
+            
+            ax.arrow(r0[1], r0[2], δr[1], δr[2], color=(GetCpt(S, e, false)>0 ? :red : :blue), 
+                  length_includes_head=true, head_length=0.15, head_width=0.15)
+        else
+            ax.plot3D([r1[1]; r2[1]], [r1[2]; r2[2]], [r1[3]; r2[3]], color=(GetCpt(S, e, false)>0 ? :red : :blue), zorder=1)
+            
+            ax.quiver(r0[1], r0[2], r0[3], δr[1], δr[2], δr[3], color=(GetCpt(S, e, false)>0 ? :red : :blue))
+        end
+    end
+    
+    for (i, Δi) in enumerate(Δ.cells[1])
+        if toPlot != nothing && !toPlot[1][i]
+            continue
+        end
+        
+        if dim==2
+            ax.scatter(Δi.x[1], Δi.x[2], color=:black, zorder=2)
+        else
+            ax.scatter3D(Δi.x[1], Δi.x[2], Δi.x[3], color=:black, zorder=2)
+        end
     end
     
     axis("equal")
+    
+    return fig, ax
 end
 
 # ### Graphs.jl plotting

@@ -16,26 +16,26 @@
 
 # ### Ground State Function
 
-@everywhere function GroundState!(cells, isPyrochlore)
+@everywhere function GroundState!(S, Δ, isPyrochlore)
     
     if !isSpinIce # ANY toric code
-        for e in cells[2]
-            e.σ = false
+        for (e, Δe) in enumerate(Δ.cells[2])
+            S.vals[e] = 1
         end
         
         return
     end
     
     if isPyrochlore # pyrochlore spin ice
-        for e in cells[2]
-            e.σ = (e.x[1] ≈ e.x[2])
+        for (e, Δe) in enumerate(Δ.cells[2])
+            S.vals[e] = (-1)^(Δe.x[1] ≈ Δe.x[2])
         end
         
         return
     end
     
-    for e in cells[2] # square or kagome spin ice
-        e.σ = (e.x[2]==0)
+    for (e, Δe) in enumerate(Δ.cells[2]) # square or kagome spin ice
+        S.vals[e] = (-1)^(Δe.x[2]==0)
     end
     
 end

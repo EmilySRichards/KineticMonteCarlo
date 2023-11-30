@@ -14,78 +14,77 @@
 #     name: julia-_6-threads_-1.8
 # ---
 
-# ### Single-Flip Dynamics
+# ### Local energy density
 
-# #### 8-Vertex
-
-@everywhere function A(edges, vertex) # calculates A at given vertex for 8-vertex model
-    A = 1
-    for α in vertex.δ # product of all adjacent spins
-        A *= (-1)^edges[α].σ
-    end
-
-    return A
-end
-
-# #### 6-Vertex
-
-@everywhere function Q(edges, vertex) # calculates B at given vertex for 6-vertex model
-    Q = 0
-    for α in vertex.δ # sum of all adjacent spins
-        Q += (-1)^edges[α].σ
+@everywhere function ϵ(S, D, Δ, i, 𝒽)
+    ϵi = 0
+    
+    # energy without demons
+    ϵi += (λ!=0) ? -λ*Star(S, Δ, i) : 0
+    ϵi += (ξ!=0) ? ξ*(-Boundary(S, Δ, i))^2 : 0
+    
+    Δi = Δ.cells[1][i]
+    for e in Δi.∂ᵀ
+        if isSpinIce
+            ϵi -= 0.5 * 𝒽 * (Δ.cells[2][e].x[1]) * GetCpt(S, e, true) # magnetic field is a vector in the plane of the spins, taken to lie along [10...]
+        else
+            ϵi -= 0.5 * 𝒽 * GetCpt(S, e, false) # magnetic field is a scalar in a direc perp to the lattice
+        end
     end
     
-    return Q
-end
-
-@everywhere function B(edges, vertex) # calculates A at given vertex for 6-vertex model
-    return Q(edges, vertex)^2
-end
-
-# #### Both
-
-@everywhere function ϵ(vertices, edges, vertex, 𝒽)
-    ϵ = -λ*A(edges, vertex) + ξ*B(edges, vertex)
-    
-    for α in vertex.δ
-        ϵ += 0.5 * (edges[α].D - 𝒽*edges[α].σ)
+    # add on the local demon energy
+    if D != nothing
+        Δi = Δ.cells[1][i]
+        for e in Δi.∂ᵀ
+            ϵi += 0.5 * GetCpt(D, e, false)
+        end
     end
-
-    return ϵ
-end
-
-@everywhere function ΔE_flip(vertices, edges, β, 𝒽)
-    v1 = vertices[edges[β].∂[1]]
-    v2 = vertices[edges[β].∂[2]]
-    σ = (-1)^edges[β].σ
-
-    return 2*λ*(A(edges, v1) + A(edges, v2)) - 4*ξ*(σ*(Q(edges, v1) + Q(edges, v2)) - 2) + 2*𝒽*σ
-end
-
-@everywhere function Δj_flip(vertices, edges, β)
-    v1 = vertices[edges[β].∂[1]]
-    v2 = vertices[edges[β].∂[2]]
-    σ = (-1)^edges[β].σ
     
-    return λ*(A(edges, v2) - A(edges, v1)) - 2*ξ*σ*(Q(edges, v2) - Q(edges, v1))
+    # note that term-by-term, all the above (De, Se_TC and re*Se_SI are EVEN under e -> -e so the above decompositions work)
+    
+    return ϵi
 end
 
-# ### Double-Flip Dynamics
-
-@everywhere function ΔE_2flip(vertices, edges, 𝜷, 𝒊, i, 𝒽)
-    if 𝜷[1] == 𝜷[2]
-        return 0
+@everywhere function ϵ(S, D, Δ, 𝒽)
+    ϵs = CreateField(Δ, 0)
+    
+    for i in eachindex(Δ.cells[1])
+        ϵs.vals[i] = ϵ(S, D, Δ, i, 𝒽)
     end
-    𝐯 = [vertices[𝒊[1]], vertices[𝒊[2]]]
-    v = vertices[i]
-    𝛔 = [(-1)^edges[𝜷[1]].σ, (-1)^edges[𝜷[2]].σ]
     
-    return 2*λ*(A(edges, 𝐯[1]) + A(edges, 𝐯[2])) - 4*ξ*(𝛔[1]*Q(edges, 𝐯[1]) + 𝛔[2]*Q(edges, 𝐯[2]) - 2) + (2*𝒽 - 4*ξ*Q(edges, v) - 8*ξ*𝛔[1])*(𝛔[1] + 𝛔[2]) 
+    return ϵs
 end
 
-@everywhere function Δj_2flip(vertices, edges, 𝜷, 𝒊, 𝒽) # current flow from 𝒊[1] to 𝒊[2] via 𝜷[1] then 𝜷[2]
-    𝐯 = [vertices[𝒊[1]], vertices[𝒊[2]]]
-    𝛔 = [(-1)^edges[𝜷[1]].σ, (-1)^edges[𝜷[2]].σ]
+
+
+
+# ### Energy change and current function 
+
+@everywhere function EnergyChange(S, Δ, edges, 𝒽, D=nothing) # takes an array of edges to flip in this move
+
+    S′ = deepcopy(S)
+    for e in edges
+        S′.vals[e] = -S′.vals[e]
+    end
+        
+    # affected vertices - union of the boundary sets of edges to flip
+    visited = []
+    ΔE = 0
+    J = zeros(length(edges))
+    for (n, e) in enumerate(edges)
+        for (i, k) in zip(Δ.cells[2][e].∂, Δ.cells[2][e].η)
+            Δϵi = ϵ(S′, D, Δ, i, 𝒽) - ϵ(S, D, Δ, i, 𝒽)
+            
+            if !(i in visited) # (avoids repeats!!)    
+                ΔE += Δϵi
+                push!(visited)
+            end
+            
+            J[n] += k*Δϵi # ORIENTATION OF CURRENT HANDLED MANUALLY HERE --> BAD!!!
+        end
+    end
     
-    return λ*(A(edges, 𝐯[2]) - A(edges, 𝐯[1])) - 2*ξ*(𝛔[2]*Q(edges, 𝐯[2]) - 𝛔[1]*Q(edges, 𝐯[1])) + 0.5*𝒽*(𝛔[2] - 𝛔[1])
+    J ./= 2 # dividing by the size of the coboundary of each edge (enforces continuity and energy cons)
+        
+    return ΔE, J
 end

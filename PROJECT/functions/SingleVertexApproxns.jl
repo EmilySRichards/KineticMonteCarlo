@@ -44,16 +44,16 @@ end
 
 # ### <B> Single Vertex
 
-function Bsv(T, 𝒽, z)
+function Q²sv(T, 𝒽, z)
     
-    B = zeros(size(T))
+    Q² = zeros(size(T))
     for n in 0:z
-        B += (z-2*n).^2 .* binomial(z, n) .* exp.((-1)^n .* (λ ./ T) - (z-2*n)^2 .* (ξ ./ T) + (z-2*n) .* (𝒽 ./ T))
+        Q² += (z-2*n).^2 .* binomial(z, n) .* exp.((-1)^n .* (λ ./ T) - (z-2*n)^2 .* (ξ ./ T) + (z-2*n) .* (𝒽 ./ T))
     end
 
-    B ./= PartitionFunction(T, 𝒽, z)
+    Q² ./= PartitionFunction(T, 𝒽, z)
     
-    return  B
+    return Q²
 end
 
 

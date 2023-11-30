@@ -9,9 +9,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.14.4
 #   kernelspec:
-#     display_name: Julia (6 threads) 1.8.2
+#     display_name: Julia 1.9.4
 #     language: julia
-#     name: julia-(6-threads)-1.8
+#     name: julia-1.9
 # ---
 
 # ## Setup
@@ -24,6 +24,7 @@ include(dir * "/functions/Preamble.jl")
 t0 = now()
 
 # +
+@everywhere include(dir * "/functions/CellComplex.jl")
 @everywhere include(dir * "/functions/DataStructure.jl")
 @everywhere include(dir * "/functions/Bases.jl")
 @everywhere include(dir * "/functions/Plotting.jl")
@@ -56,14 +57,14 @@ t0 = now()
 
 # +
 # chosen basis
-@everywhere Basis =SquareBasis() # DiamondBasis() # CubicBasis(2) # 
+@everywhere Basis = SquareBasis() # DiamondBasis() # CubicBasis(2) # 
 
 # coordination number of lattice (ASSERTED CONSTANT FOR OUR PURPOSES)
 @everywhere z = Coordination(Basis)
 
 # function to generate groundstate
 @everywhere isDiamond = (z==4 && length(Basis[4])==3) # certainly not general, but avoids human error in me setting the ground state explicitly...
-@everywhere GroundState!(cells) = GroundState!(cells, isDiamond)
+@everywhere GroundState!(field, cells) = GroundState!(field, cells, isDiamond)
 
 # +
 # Approxn of self-diffusion coeff at zero density
@@ -83,7 +84,7 @@ else
     Kfun = (T, h) -> Dself ./ 2 .* (0.5 .* δE ./ T).^2 .* ExcitationDensity(T, h, z) .* (1 .- AllExcitationDensity(T, h, z))
 end
 
-Cfun = (T, h) -> 2/z .* (λ^2 .* sech.(λ ./T).^2 + 2 * h^2 .* sech.(h ./T).^2) ./ T.^2
+Cfun = (T, h) -> 1/z .* (λ^2 .* sech.(λ ./T).^2 + 2 * h^2 .* sech.(h ./T).^2) ./ T.^2
 
 if twoFlip
     Dfun = (T, h) -> Kfun(T, h) ./ Cfun(T, h)
@@ -95,20 +96,26 @@ end
 # ### Testing Data Structure
 
 # +
-TestBasis = SnubSquareBasis()
-L = [3, 3]
+TestBasis = HexBasis()
+L = [6, 6]
 PBC = [false, false]
 
-cells, _ = LatticeGrid(L, PBC, TestBasis)
-vertices = cells[1]
-edges = cells[2]
+Δ, _ = LatticeGrid(L, PBC, TestBasis)
 
-GroundState!(cells, false)
+S = CreateField(Δ, 1)
+GroundState!(S, Δ, false)
 
-Lvertices, Ledges = LineGraph(vertices, edges);
+# Lvertices, Ledges = LineGraph(vertices, edges);
 # -
 
-PlotGraph(vertices, edges)
+fig, ax = PlotGraph(S, Δ);
+#ax.view_init(5, 10)
+
+# + active=""
+# @everywhere using Profile, ProfileView, Traceur # ,ProfileVega
+#
+# @time Boundary(S, Δ, 9)
+# -
 
 # ## Thermal Conductivity
 
@@ -118,15 +125,13 @@ PlotGraph(vertices, edges)
 @everywhere include(dir * "/functions/simulationFunctions/DemonHeatBath.jl")
 
 # +
-L = [6, 6]
+L = [15, 5]
 PBC = [false, true]
 
-𝒽 = [0.0]
-
 num_histories = 1
-therm_runtime = 100
-runtime = 200
-t_therm = 100
+therm_runtime = 300
+runtime = 1500
+t_therm = 200
 t_autocorr = 1
 N_blocks = -1
 
@@ -134,59 +139,44 @@ W = 5
 Tc = 0.1
 Th = 10.0
 
-T, κ, C, Diff, TStd, κStd, CStd, DiffStd = BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, runtime, t_therm, t_autocorr, N_blocks, 𝒽);
+T, κ, C, Diff, TStd, κStd, CStd, DiffStd = BathSimulation(L, PBC, Basis, W, Tc, Th, num_histories, therm_runtime, runtime, t_therm, t_autocorr, N_blocks);
 
 idx = W+1:size(T, 2)-W+1;
 # -
 
 # FUDGE FACTOR - WHYYY MISSING FACTOR 1/2????
-κ[1,:,:] ./= 2;
-κ[2,:,:] ./= 2;
-
-colors = jetmap(length(𝒽))
+κ[1,:] ./= 2;
+κ[2,:] ./= 2;
 
 figure()
-for i in eachindex(𝒽)
-    plotWithError(T[1,:,i], 1:size(T, 2), colors[i], "+", TStd[1,:,i])
-    plotWithError(T[2,:,i], 1:size(T, 2), colors[i], "x", TStd[2,:,i])
-end
+plotWithError(T[1,:], 1:size(T, 2), :black, "+", TStd[1,:])
+plotWithError(T[2,:], 1:size(T, 2), :black, "x", TStd[2,:])
 savefig("figs/Demon_Bath_Temperatures.png")
 
 figure()
-for i in eachindex(𝒽)
-    #plot(T[1,idx,i], Cfun(T[1,idx,i], 𝒽[i]), color=colors[i])
-    #plot(T[1,idx,i], HeatCapacity(T[1,idx,i], 𝒽[i], z), color=colors[i], "--")
-    
-    plotWithError(C[1,idx,i], T[1,idx,i], colors[i], "+")#, CStd[1,idx,i], TStd[1,idx,i])
-    plotWithError(C[2,idx,i], T[2,idx,i], colors[i], "x")#, CStd[2,idx,i], TStd[2,idx,i])
-end
-ylim([0, 2])
+plotWithError(C[1,idx], T[1,idx], :black, "+")#, CStd[1,idx,i], TStd[1,idx,i])
+plotWithError(C[2,idx], T[2,idx], :black, "x")#, CStd[2,idx,i], TStd[2,idx,i])
 savefig("figs/Demon_Bath_Capacity.png")
 
 # +
 figure()
-for i in eachindex(𝒽)
-    plot(T[1,idx,i], Kfun(T[1,idx,i], 𝒽[i]), color=colors[i])
+plot(T[1,idx], Kfun(T[1,idx], 0), color=:black)
     
-    plotWithError(κ[1,idx,i], T[1,idx,i], colors[i], "+")#, κStd[1,idx,i], TStd[1,idx,i])
-    plotWithError(κ[2,idx,i], T[2,idx,i], colors[i], "x")#, κStd[2,idx,i], TStd[2,idx,i])
-end
+plotWithError(κ[1,idx], T[1,idx], :black, "+")#, κStd[1,idx,i], TStd[1,idx,i])
+plotWithError(κ[2,idx], T[2,idx], :black, "x")#, κStd[2,idx,i], TStd[2,idx,i])
 
 savefig("figs/Demon_Bath_Conductivity.png")
 # -
 
 figure()
-for i in eachindex(𝒽)
-    plot(T[1,idx,i], Dfun(T[1,idx,i], 𝒽[i]), color=colors[i])
-    plotWithError(Diff[1,idx,i], T[1,idx,i], colors[i], "+")#, DiffStd[1,idx,i], TStd[1,idx,i])
-    
-    plot(T[2,idx,i], Dfun(T[2,idx,i], 𝒽[i]), color=colors[i], "--")
-    plotWithError(Diff[2,idx,i], T[2,idx,i], colors[i], "x")#, DiffStd[2,idx,i], TStd[2,idx,i])
-end
+plot(T[1,idx], Dfun(T[1,idx], 0), color=:black)
+plot(T[2,idx], Dfun(T[2,idx], 0), color=:black, "--")
+plotWithError(Diff[1,idx], T[1,idx], :black, "+")#, DiffStd[1,idx,i], TStd[1,idx,i])
+plotWithError(Diff[2,idx], T[2,idx], :black, "x")#, DiffStd[2,idx,i], TStd[2,idx,i])
+
 savefig("figs/Demon_Bath_Diffusivity.png")
 
 save("data/DemonBath.jld", "Size", L, 
-                           "Fields", 𝒽, 
                            "num_histories", num_histories, 
                            "therm_runtime", therm_runtime, 
                            "runtime", runtime, 
@@ -239,11 +229,11 @@ Tmax = 10.0
 NumT = 50
 T = collect(range(Tmin, Tmax, length=NumT)) # the +0.1 is a fudge factor to fix our approximations earlier... (exact value doesn't matter b/c just adds ~a single demon)
 
-𝒽 = [0.0] # range(0, 2, length=9)
+𝒽 = [0.0]
 
 num_histories = 1
-runtime = 1500
-t_therm = 500
+runtime = 1000
+t_therm = 100
 t_cutoff = 100
 t_autocorr = 100
 N_blocks = -1
@@ -327,9 +317,20 @@ print(canonicalize(t2 - t1))
 
 @everywhere include(dir * "/functions/simulationFunctions/MicroKubo.jl")
 
+# + active=""
+# @everywhere using Profile, ProfileView, Traceur # ,ProfileVega
+#
+# @profview MKuboSimulation([5, 5], [true, true], Basis, 2, 1000, 1000, 100, 100, -1, 100, collect(range(0.01, 10.0, length=50)), [0.0], false)
+
+# + active=""
+# @time MKuboSimulation([5, 5], [true, true], Basis, 2, 1000, 1000, 100, 100, -1, 100, collect(range(0.01, 10.0, length=50)), [0.0], false)
+
+# + active=""
+# @trace MKuboSimulation(L, PBC, Basis, num_histories, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽, allComponents)
+
 # +
 # PARAMETERS
-L = [16, 16]
+L = [24, 24]
 PBC = [true, true]
 
 Tmin = 0.01
@@ -339,9 +340,9 @@ NumT = 50
 #Tmax *= (λ == 0 ? 1.0 : 0.5)
 T = collect(range(Tmin, Tmax, length=NumT))
 
-𝒽 = [0.0] #range(0, 1, length=3)
+𝒽 = [0.0] # range(0, 2, length=5) # 
 
-num_histories = 20
+num_histories = 5
 therm_runtime = 1000
 runtime = 1000
 t_therm = 100
@@ -349,52 +350,16 @@ t_autocorr = 100
 N_blocks = -1
 t_cutoff = 100
 
-allComponents = true
+allComponents = false
+
 
 # EVALUATION
-κ, C, Diff, M, ℙ, κStd, CStd, DiffStd, MStd, ℙStd = MKuboSimulation(L, PBC, Basis, num_histories, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽, allComponents);
+κ, C, Diff, κStd, CStd, DiffStd = MKuboSimulation(L, PBC, Basis, num_histories, runtime, therm_runtime, t_therm, t_autocorr, N_blocks, t_cutoff, T, 𝒽, allComponents);
 # -
 
 now()
 
 colors = jetmap(length(𝒽));
-
-# +
-figure()
-Tfun = (M, h) -> (h .+ 0.5 .* M .^ 3) ./ atanh.(M)
-function Mfun(T, h)
-    m = zeros(length(T))
-    
-    if h==0
-        return m
-    end
-    
-    for i in eachindex(T)
-        m[i] = find_zero((M) -> Tfun(M, h) - T[i], (0, 1))
-    end
-    return m
-end
-
-Mfun0 = (T, h) -> tanh.(h ./ T)
-
-for n in eachindex(𝒽)
-    plot(T, Magnetisation(T, 𝒽[n], z), color=colors[n])
-    plot(T, tanh.(𝒽[n] ./ T), "--", color=colors[n])
-    scatter(T, M[:,n], color=colors[n])
-end
-savefig("figs/Micro_Kubo_Magnetisation.png")
-
-# +
-figure()
-#ℙfunMF = (T, h) -> 1 .- (1 .- Mfun0(T, h) .^2) ./ 3
-ℙfunLim = (T, h) -> 1 .- (1 .- Magnetisation(T, h, z) .^2) ./ 4
-
-for n in eachindex(𝒽)
-    plot(T, ℙfunLim(T, 𝒽[n]), color=colors[n])
-    scatter(T, ℙ[:,n], color=colors[n])
-end
-savefig("figs/Micro_Kubo_Percolation.png")
-# -
 
 dim = allComponents ? length(L) : 1
 for i in 1:dim
@@ -452,8 +417,6 @@ save("data/MicroKubo.jld", "Size", L,
                            "twoFlip", twoFlip,
                            "allComponents", allComponents,
                            "Temperature", T,
-                           "Magnetisation", M,
-                           "Percolation", ℙ,
                            "Conductivity", κ,
                            "ConductivityStd", κStd,
                            "Capacity", C,
@@ -464,37 +427,34 @@ save("data/MicroKubo.jld", "Size", L,
 κ       = Nothing
 C       = Nothing
 Diff    = Nothing
-M       = Nothing
-ℙ       = Nothing
 κStd    = Nothing
 CStd    = Nothing
 DiffStd = Nothing
-MStd    = Nothing
-ℙStd    = Nothing
 
 t3 = now()
 print("\n", canonicalize(t3 - t2))
 
 # ### Diffusive Motion
 
+@everywhere include(dir * "/functions/simulationFunctions/MicroKubo.jl")
 @everywhere include(dir * "/functions/simulationFunctions/MicroDiffusion.jl")
 
 # +
-L = [16, 16]
+L = [25, 25]
 PBC = [true, true]
 
-therm_runtime = floor(Int64,(maximum(L)./2)^2/2/length(L)/Dself) # 500
-runtime = 300
+therm_runtime = 500 # floor(Int64,(maximum(L)./2)^2/2/length(L)/Dself) # 1000
+runtime = 500
 tau = 2:200
-num_histories = 50
-𝒽 = [0.0] #range(0, 1, length=7)
+num_histories = 10
+𝒽 = [0.0]; #collect(range(0, 2, length=5))
 
-T = []; # collect(range(0.01, 10.0, length=50));
-ℓ = [1];
+T = []; # collect(range(0.01, 1.0, length=20));
+ℓ = collect(range(1, 15, step=1)); # [1];
 
+Basis = SquareBasis()
 
-x, δ, Mag, Perc, p, Nv = DiffSim(L, PBC, Basis, therm_runtime, runtime, ℓ, T, 𝒽);
-D, α, C, γ, MSD, VACF = DiffAnalysis(x, δ, p, runtime, ℓ, T, 𝒽);
+x, δ, Mag, Perc, P, Nv = DiffSim(L, PBC, Basis, therm_runtime, runtime, ℓ, T, 𝒽);
 # -
 
 figure()
@@ -505,7 +465,11 @@ for h in 1:length(x[1][1])
 end
 savefig("figs/trajectories.pdf")
 
-colors = jetmap(length(𝒽))
+# +
+D, α, C, γ, MSD, VACF = DiffAnalysis(x, δ, P, runtime, ℓ, T, 𝒽);
+
+colors = jetmap(length(𝒽));
+colorsℓ = jetmap(length(ℓ));
 
 # +
 Mag = mean(Mag, dims=3)
@@ -541,7 +505,7 @@ for t in 1:size(MSD, 2)
     for i in 1:size(MSD, 3)
         if MSD[tau,t,i] != [NaN for _ in 1:size(MSD, 1)]
             #loglog(MSD[:,t,i], color=colors[i])
-            plot(MSD[tau,t,i], color=colors[i])
+            plot(MSD[tau,t,i], color=colorsℓ[t])
         end
     end
 end
@@ -554,7 +518,7 @@ for t in 1:size(VACF, 2)
     for i in 1:size(VACF, 3)
         if VACF[tau,t,i] != [NaN for _ in 1:size(VACF, 1)]
             #loglog(abs.(VACF[:,t,i]), color=colors[i])
-            plot(VACF[tau,t,i], color=colors[i])
+            plot(VACF[tau,t,i], color=colorsℓ[t])
         end
     end
 end
@@ -564,7 +528,7 @@ savefig("figs/VACF.png")
 
 # estimate based on assuming the number of particles is <ϵ_i>/2λ/2 in single vertex approxn
 figure() # density of quasiparticles
-p = mean(p, dims=3) ./ Nv
+p = mean(P, dims=3) ./ Nv
 if length(T) > 0
     for i in eachindex(𝒽)
         scatter(T, p[:,i], color=colors[i])
@@ -573,7 +537,7 @@ if length(T) > 0
 elseif length(ℓ) > 0
     pExp = 2 .* ℓ ./ Nv
     for i in eachindex(𝒽)
-        scatter(ℓ, p[:,i], color=colors[i])
+        scatter(ℓ, p[:,i], color=colorsℓ)
     end
     plot(ℓ, pExp, color=:black, "--")
 end
@@ -587,9 +551,9 @@ if length(T) > 0
         plotWithError(D[1,:,i], T, colors[i], ".", "" , D[2,:,i])
     end
 elseif length(ℓ) > 0
-    plot(ℓ, Dself .* (1 .- 2 .* ℓ ./ Nv), color=:black)
+    plot(2 .* ℓ, Dself .* (1 .- 2 .* ℓ ./ Nv), color=:black)
     for i in eachindex(𝒽)
-        plotWithError(D[1,:,i], ℓ, colors[i], ".", "" , D[2,:,i])
+        plotWithError(D[1,:,i], 2 .* ℓ, colors[i], ".", "" , D[2,:,i])
     end
 end
 savefig("figs/MSD_Coefficient.png")
@@ -601,10 +565,27 @@ if length(T) > 1
     end
 elseif length(ℓ) > 0
     for i in eachindex(𝒽)
-        plotWithError(α[1,:,i], ℓ, colors[i], ".", "" , α[2,:,i])
+        plotWithError(α[1,:,i], 2*ℓ, colors[i], ".", "" , α[2,:,i])
     end
 end
 savefig("figs/MSD_Exponent.png")
+
+# +
+# MSD EXPONENT NUMBER TWO!
+numExcitations = (temp) -> temp==0 ? 0 : Nv * (ExcitationDensity([temp], 0.0, z))[1]
+T = zeros(length(ℓ))
+
+for n in eachindex(ℓ)
+    fn = (t) -> numExcitations(t) - 2*ℓ[n]
+    T[n] = find_zero(fn, (0, 10))
+end
+
+print(T)
+
+figure()
+
+plotWithError(α[1,:,1], T, :black, ".", "" , α[2,:,1]);
+# -
 
 figure() # vacf diffusion coefficient
 if length(T) > 0
@@ -614,9 +595,9 @@ if length(T) > 0
         plotWithError(C[1,:,i], T, colors[i], ".", "" , D[2,:,i])
     end
 elseif length(ℓ) > 0
-    plot(ℓ, Dself .* (1 .- 2 .* ℓ ./ Nv), color=:black)
+    plot(2 .* ℓ, Dself .* (1 .- 2 .* ℓ ./ Nv), color=:black)
     for i in eachindex(𝒽)
-        plotWithError(C[1,:,i], ℓ, colors[i], ".", "" , D[2,:,i])
+        plotWithError(C[1,:,i], 2 .* ℓ, colors[i], ".", "" , D[2,:,i])
     end
 end
 savefig("figs/VACF_Coefficient.png")
@@ -641,129 +622,286 @@ print("γ = ", γ[1,1,1], " ± ", γ[2,1,1], "\n\n")
 print(α[1,1,1]+1, " ± ", α[2,1,1], "\n\n")
 print(2*γ[1,1,1]+4, " ± ", 2*γ[2,1,1], "\n\n")
 
-save("data/MicroDiff.jld", "Size", L,
-                           "Fields", 𝒽,
-                           "num_histories", num_histories,
-                           "therm_runtime", therm_runtime,
-                           "runtime", runtime,
-                           "tau", tau,
-                           "basis", Basis,
-                           "lambda", λ,
-                           "xi", ξ,
-                           "EnergyQuantisation", δE,
-                           "Dself", Dself,
-                           "twoFlip", twoFlip,
-                           "Temperature", T,
-                           "NumFlippedEdges", ℓ,
-                           "MSD", MSD,
-                           "VACF", VACF,
-                           "D", D,
-                           "alpha", α,
-                           "C", C,
-                           "gamma", γ)
+# save("data/MicroDiff.jld", "Size", L,
+#                            "Fields", 𝒽,
+#                            "num_histories", num_histories,
+#                            "therm_runtime", therm_runtime,
+#                            "runtime", runtime,
+#                            "tau", tau,
+#                            "basis", Basis,
+#                            "lambda", λ,
+#                            "xi", ξ,
+#                            "EnergyQuantisation", δE,
+#                            "Dself", Dself,
+#                            "twoFlip", twoFlip,
+#                            "Temperature", T,
+#                            "NumFlippedEdges", ℓ,
+#                            "MSD", MSD,
+#                            "VACF", VACF,
+#                            "D", D,
+#                            "alpha", α,
+#                            "C", C,
+#                            "gamma", γ)
 
 t4 = now()
 print("\n", canonicalize(t4 - t3))
 
 # ### Diffusion Subgraphs
 
+@everywhere include(dir * "/functions/simulationFunctions/MicroDiffusion.jl")
+@everywhere include(dir * "/functions/simulationFunctions/MicroKubo.jl")
+
 # +
-Basis = SnubSquareBasis()
-L = [10, 10]
+Basis = SquareBasis()
+L = [64, 64]
 PBC = [true, true]
 
-therm_runtime = 5000
-T_therm = 4
+therm_runtime = 4000
+T_therm = 1
 𝒽 = 0.0
 randomInit = false
+numToFlip = 1
 
-cells, scale = LatticeGrid(L, PBC, Basis)
+Δ, scale = LatticeGrid(L, PBC, Basis)
 
-_ = MicroKuboSetup(cells, therm_runtime, T_therm, 𝒽, randomInit);
+S = MicroDiffnSetup(Δ, 1);l
+MicroDiffn(S, Δ, therm_runtime, 𝒽, false);
+
+#S, _ = MicroKuboSetup(Δ, therm_runtime, T_therm, 𝒽, randomInit);
 # -
 
 # find all the excitations
 js = []
 Qjs = []
-for j in eachindex(cells[1])
-    Aj = A(cells[2], cells[1][j])
-    Qj = Q(cells[2], cells[1][j]) * (-1)^j
+for i in eachindex(Δ.cells[1])
+    Ai = Star(S, Δ, i)
+    Qi = -Boundary(S, Δ, i)
 
-    if (isSpinIce ? (abs(Qj) == 3 || abs(Qj) == 2) : Aj == -1)
-        push!(js, j)
-        push!(Qjs, Qj)
+    if (isSpinIce ? (abs(Qi) == 3 || abs(Qi) == 2) : Ai == -1)
+        push!(js, i)
+        push!(Qjs, Qi)
     end
 end
 print(size(js))
 
 # #### Charge Subgraphs
 
-# +
-PlotGraph(cells[1], cells[2])
-
-for j in eachindex(cells[1])
-    Qj = Q(cells[2], cells[1][j]) * (-1)^j
-    
-    c = Qj == 0 ? :black : (Qj > 0 ? :red : :blue)
-    scatter(cells[1][j].x[1], cells[1][j].x[2], color=c, zorder=3)
-    
-    if abs(Qj) > 1
-        scatter(cells[1][j].x[1], cells[1][j].x[2], color=:yellow, zorder=3, marker="*")
-    end
-end
+# + active=""
+# PlotGraph(S, Δ)
+#
+# for (i, Δi) in enumerate(Δ.cells[1])
+#     Qi = -Boundary(S, Δ, i)
+#     
+#     c = (Qi == 0) ? :black : (Qi > 0 ? :red : :blue)
+#     scatter(Δi.x[1], Δi.x[2], color=c, zorder=3)
+#     
+#     if abs(Qi) > 1
+#         scatter(Δi.x[1], Δi.x[2], color=:yellow, zorder=3, marker="*")
+#     end
+# end
 # -
 
 # #### Arrow Subgraphs
 
 # +
-using Graphs
+using DataStructures
 
-function LatticeToDigraph(vertices, edges)
-    elist = []
-    flist = []
-    for edge in edges
-        sites = edge.∂
-        I = (-1).^sites # sublattice signs (should be opposite)
-        # CHOOSE to take true spins to point from the I>0 site to the I<0 site WLOG
-        # the net effect is we take 2->1 if I1>I2 XOR σ>0 
+function BFS(S, Δ, u) # u = starting vertex
+    
+    # define whether to follow spins or go against them
+    Qu = -Boundary(S, Δ, u) # charge of starting vertex
+    isReachable = (Svw) -> (Svw == sign(Qu))
+    
+    seenV = zeros(Bool, length(Δ.cells[1]))
+    seenE = zeros(Bool, length(Δ.cells[2]))
+    toExplore = Queue{Int}()
+    
+    enqueue!(toExplore, u)
+    seenV[u] = true
+    
+    while length(toExplore)> 0
+        v = dequeue!(toExplore)
         
-        if I[1]<I[2] ⊻ edge.σ>0 
-            push!(elist, Tuple(reverse(sites)))
-            push!(flist, Tuple(sites))
-        else
-            push!(elist, Tuple(sites))
-            push!(flist, Tuple(reverse(sites)))
-        end
+        for (e, k) in zip(Δ.cells[1][v].∂ᵀ, Δ.cells[1][v].ηᵀ) # loop over connected edges
+            
+            w = Δ.cells[2][e].∂[findfirst(Δ.cells[2][e].∂ .!= v)] # connected vertex
+            
+            Svw = -GetCpt(S, k*e, true) # spin from v to w
+            
+            if isReachable(Svw)
+                seenE[e] = true
+                
+                if !seenV[w]
+                    enqueue!(toExplore, w)
+                    seenV[w] = true
+                end
+            end
+        end 
     end
-    return SimpleDiGraph(Graphs.SimpleEdge.(elist)), SimpleDiGraph(Graphs.SimpleEdge.(flist));
+
+    return [seenV, seenE, []]
 end
-
-# +
-# for each excitation, find the arrow subgraph for its charge
-
-# +
-G1, G2 = LatticeToDigraph(cells[1], cells[2])
-
-H = []
-
-for (j, Qj) in zip(js, Qjs)
-    if  Qj > 0
-        push!(H, bfs_tree(G1, j))
-    else
-        push!(H, bfs_tree(G2, j))
-    end
-end
-
-# +
-using GraphRecipes, Plots
-
-figure()
-#graphplot(G1, curves=false)
-graphplot(H[4], curves=false)
 # -
 
-t5 = now()
-print("\n", canonicalize(t5 - t4))
+function DFS(S, Δ, u) # u = starting vertex
+    
+    # define whether to follow spins or go against them
+    Qu = -Boundary(S, Δ, u) # charge of starting vertex
+    isReachable = (Svw) -> (Svw == sign(Qu))
+    
+    seenV = zeros(Bool, length(Δ.cells[1]))
+    seenE = zeros(Bool, length(Δ.cells[2]))
+    toExplore = Stack{Int}()
+    
+    push!(toExplore, u)
+    seenV[u] = true
+    
+    while length(toExplore)> 0
+        v = pop!(toExplore)
+        
+        for (e, k) in zip(Δ.cells[1][v].∂ᵀ, Δ.cells[1][v].ηᵀ) # loop over connected edges
+            
+            w = Δ.cells[2][e].∂[findfirst(Δ.cells[2][e].∂ .!= v)] # connected vertex
+            
+            Svw = -GetCpt(S, k*e, true) # spin from v to w
+            
+            if isReachable(Svw)
+                seenE[e] = true
+                
+                if !seenV[w]
+                    push!(toExplore, w)
+                    seenV[w] = true
+                end
+            end
+        end 
+    end
+
+    return [seenV, seenE, []]
+end
+
+# + active=""
+# toPlot = BFS(S, Δ, js[1]);
+# PlotGraph(S, Δ, toPlot)
+# -
+
+# #### Shortest Path Scaling
+
+function BFS_path(S, Δ, s, ts, isReachable)
+    
+    # define whether to follow spins or go against them
+    Q = -Boundary(S, Δ, s) # charge of the (starting) vertex that will be hopping around
+
+    seen = zeros(Bool, length(Δ.cells[1]))
+    comeFrom = zeros(Int, length(Δ.cells[1]))
+    toExplore = Queue{Int}()
+    
+    enqueue!(toExplore, s)
+    seen[s] = true
+    
+    while length(toExplore)> 0
+        v = dequeue!(toExplore)
+        
+        for (e, k) in zip(Δ.cells[1][v].∂ᵀ, Δ.cells[1][v].ηᵀ) # loop over connected edges
+            
+            w = Δ.cells[2][e].∂[findfirst(Δ.cells[2][e].∂ .!= v)] # connected vertex
+            Qw = -Boundary(S, Δ, w) # charge of the target vertex
+            
+            Svw = -GetCpt(S, k*e, true) # spin from v to w
+            
+            if !seen[w] && isReachable(Svw, Q, Qw)
+                enqueue!(toExplore, w)
+                seen[w] = true
+                comeFrom[w] = v
+            end
+        end 
+    end
+    
+    ds = zeros(Int, length(ts))
+    
+    for n in eachindex(ts)
+        if s==ts[n]
+            ds[n] = 0
+        elseif comeFrom[ts[n]] == 0
+            ds[n] = -1 # NaN
+        else
+            path = [ts[n]]
+            while comeFrom[path[1]] != s
+                prepend!(path, comeFrom[path[1]])
+            end
+            prepend!(path, s)
+            
+            ds[n] = length(path) - 1
+        end
+    end
+
+    return ds
+end
+
+# Now we want to compute the shortest graph distance as a function of the Euclidean distance (correcting for PBCS)
+
+isReachable_SI = (Svw, Qv, Qw) -> Svw == sign(Qv - Qw)
+isReachable_boring = (Svw, Qv, Qw) -> true
+
+# +
+s = js[1]
+ts = 1:length(Δ.cells[1])
+
+
+ds = BFS_path(S, Δ, s, ts, isReachable_SI);
+d0s = BFS_path(S, Δ, s, ts, isReachable_boring);
+
+# +
+data = [[d0s[n] ds[n]] for n in eachindex(ds)];
+dict = countmap(data);
+
+dmax = max(maximum(d0s), maximum(ds));
+
+N = zeros(Int, dmax+1, dmax+1);
+
+for entry in dict
+    v = entry[1] .+ 1
+    
+    if v[2] > 0 # ignore NaN values where ds[n]=-1
+        N[v[1], v[2]] += entry[2]
+    end
+end
+
+# +
+d0s_unique = unique(d0s)
+ds_avg = zeros(length(d0s_unique))
+len = zeros(length(d0s_unique))
+
+for n in eachindex(d0s_unique)
+    for m in eachindex(d0s)
+        if d0s[m]==d0s_unique[n]
+            len[n] += 1
+            ds_avg[n] += ds[m]
+        end
+    end
+end
+
+ds_avg ./= len;
+
+I = sortperm(d0s_unique)
+d0s_unique = d0s_unique[I];
+ds_avg = ds_avg[I];
+
+# +
+upLim = max(maximum(d0s), maximum(ds))+1
+lowLim = -1;
+#plot([lowLim, upLim], [lowLim, upLim], c=:black);
+scatter(d0s, ds, s=5, c=:maroon);
+
+plot(d0s_unique, ds_avg, c=:black)
+
+# axis("equal");
+xlim([lowLim, upLim]);
+ylim([lowLim, upLim]);
+
+# -1 values are unreachable so not included in the average or imshow
+# -
+
+imshow(N', origin="lower");
 
 print("\nTOTAL RUNTIME = ", canonicalize(t5 - t0))
 
